@@ -1,0 +1,22 @@
+The 'Blinky' project is a simple program for the LPC4330
+microcontroller using NGX 'LPC4330-Xplorer' Board, compliant 
+to Cortex Microcontroller Software Interface Standard (CMSIS v2.0).
+
+Example functionality:                                                   
+ - Clock Settings:
+   - XTAL =           12.00 MHz
+   - CPU  =          180.00 MHz
+
+ - Sys Timer is used in interrupt mode
+ - LEDs are blinking with speed depending on SysTick timer interrupt period
+ 
+
+The Blinky program is available in different targets:
+
+  SWO Trace SPIFI:    runs from SPIFI Flash
+                      shows use of ITM output, Exception Trace
+					  use connector "Debug 10pin"
+
+  SWO Trace RAM:      runs from internal RAM
+                      shows use of ITM output, Exception Trace
+					  use connector "Debug 10pin"

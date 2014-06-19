@@ -1,0 +1,31 @@
+This is an RL Flash File System file manipulation example.
+You can create, read, copy, delete files from the SD/MMC 
+Flash Memory Card and format the card. 
+
+The SD_FILE program is a standalone application loaded into
+on-chip flash and available for multiple targets:
+
+LPC4330 RAM:
+    Standalone application for NGX LPC4330-Xplorer Board using
+    ITM channel 0 as a communication interface.
+    Program code is loaded into internal RAM.
+
+    start debug session (Ctrl + F5),
+    open Debug (printf) Viewer and start code execution - press Run (F5).
+
+LPC4330 SPIFI:
+    Standalone application for NGX LPC4330-Xplorer Board using
+    ITM channel 0 as a communication interface.
+    Program code is loaded into external SPIFI flash.
+
+    Download application into target, start debug session (Ctrl + F5),
+    open Debug (printf) Viewer and start code execution - press Run (F5).
+           
+Example properties:
+
+  - Clock settings:
+    - XTAL        =  12 MHz
+    - CPU Clock   = 180 MHz
+
+Jumper settings:
+  set jumper for boot pins to boot from SPIFI!

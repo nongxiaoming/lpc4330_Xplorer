@@ -1,0 +1,33 @@
+This is an RL-USB-Host and RL Flash File System file manipulation example.
+You can create, read, copy, delete files from the Mass Storage 
+Device and format the device. 
+
+Example functionality:
+ - Clock Settings:
+   - XTAL                  =  12 MHz
+   - PLL0                  = 480 MHz
+   - PLL1                  = 180 MHz
+   - CPU  clock = PLL1     = 180 MHz
+   - USB0 clock = PLL0     = 480 MHz
+   - USB1 clock = PLL1 / 3 =  60 MHz
+
+ - Communication Interface Settings:
+   - ITM channel 0
+
+The MSD_FILE program is an application adapted for 
+NGX 'LPC4330-Xplorer' Board with 'NXP LPC4330 microcontroller', 
+it is availabe for 2 targets:
+
+  LPC4330 SPIFI:      configured for external SPIFI Flash
+                     (used for production or target debugging)
+                      Download application into target, start debug session (Ctrl + F5),
+                      open Debug (printf) Viewer and start code execution - press Run (F5).
+
+
+  LPC4330 RAM:       configured for on-chip RAM
+                     (used for production or target debugging)
+                     start debug session (Ctrl + F5),
+                     open Debug (printf) Viewer and start code execution - press Run (F5).
+
+Documentation on the Web: 
+  http://www.keil.com/support/man/docs/rlarm/rlarm_fs_ex_msd.htm

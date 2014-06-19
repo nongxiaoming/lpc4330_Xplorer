@@ -1,0 +1,19 @@
+The Memory project is a demo program for the NGX 'LPC4330-Xplorer' Board
+using a NXP LPC4330 Microcontroller.
+
+It demonstrates an USB Memory based on USB Mass Storage Class.
+SD/MMC Card inserted in the target is used for the actual Memory.
+
+The USB Memory is automatically recognized by the host PC
+running Windows which will load a generic Mass Storage driver.
+
+The Memory program is available for the following targets:
+
+  LPC4330_USB0 SPIFI:     configured for external SPIFI Flash
+                          (used for production or target debugging)
+  LPC4330_USB0 RAM:       configured for on-chip RAM
+                          (used for production or target debugging)
+  LPC4330_USB1 SPIFI:     configured for external SPIFI Flash
+                          (used for production or target debugging)
+  LPC4330_USB1 RAM:       configured for on-chip RAM
+                          (used for production or target debugging)

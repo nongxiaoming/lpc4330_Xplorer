@@ -1,0 +1,32 @@
+This is an RL-USB-Host Human Interface Device (HID) usage example.
+
+Example functionality:
+ - Clock Settings:
+   - XTAL                  =  12 MHz
+   - PLL0                  = 480 MHz
+   - PLL1                  = 180 MHz
+   - CPU  clock = PLL1     = 180 MHz
+   - USB0 clock = PLL0     = 480 MHz
+   - USB1 clock = PLL1 / 3 =  60 MHz
+
+This example shows how to use USB Keyboard connected on USB1 
+connector as terminal input to the device and it uses  
+ITM channel 0 as a output interface.
+
+The Measure example is described in detail in the Getting Started
+User's Guide.
+
+The HID_KBD program is an application adapted for 
+NGX 'LPC4330-Xplorer' Board with 'NXP LPC4330 microcontroller', 
+it is availabe for 2 targets:
+
+  LPC4330 SPIFI:      configured for external SPIFI Flash
+                     (used for production or target debugging)
+                      Download application into target, start debug session (Ctrl + F5),
+                      open Debug (printf) Viewer and start code execution - press Run (F5).
+
+
+  LPC4330 RAM:       configured for on-chip RAM
+                     (used for production or target debugging)
+                     start debug session (Ctrl + F5),
+                     open Debug (printf) Viewer and start code execution - press Run (F5).
