@@ -16,7 +16,7 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include "board.h"
-
+#include "drv_uart.h"
 
 struct lpc_uart
 {
@@ -53,11 +53,11 @@ static rt_err_t lpc_control(struct rt_serial_device *serial, int cmd, void *arg)
     {
     case RT_DEVICE_CTRL_CLR_INT:
         /* disable rx irq */
-//        UART_IntConfig(uart->USART, UART_INTCFG_RBR, DISABLE);
+		    uart->USART->IER &= ~UART_IER_RBRINT_EN;
         break;
     case RT_DEVICE_CTRL_SET_INT:
         /* enable rx irq */
-      //  UART_IntConfig(uart->USART, UART_INTCFG_RBR, ENABLE);
+      uart->USART->IER |= UART_IER_RBRINT_EN;
         break;
     }
 
