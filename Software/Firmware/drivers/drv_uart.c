@@ -105,7 +105,7 @@ struct lpc_uart uart0 =
 };
 struct rt_serial_device serial0;
 
-void USART0_IRQHandler(void)
+void UART0_IRQHandler(void)
 {
     struct lpc_uart *uart;
     uint32_t intsrc, tmp, tmp1;
@@ -154,7 +154,7 @@ struct lpc_uart uart2 =
 };
 struct rt_serial_device serial2;
 
-void USART2_IRQHandler(void)
+void UART2_IRQHandler(void)
 {
     struct lpc_uart *uart;
     uint32_t intsrc, tmp, tmp1;
@@ -238,12 +238,13 @@ void rt_hw_uart_init(void)
   LPC_USART0->DLM    = 0x00;
   LPC_USART0->FDR    = 0xC1;
   LPC_USART0->LCR    = 0x03;            /* DLAB = 0                           */
+	/* enable the receive interrupt */
+  LPC_USART0->IER |= UART_IER_RBRINT_EN;
+    /* preemption = 1, sub-priority = 1 */
+    NVIC_SetPriority(uart->USART_IRQn, ((0x01 << 3) | 0x01));
 
-//    /* preemption = 1, sub-priority = 1 */
-//    NVIC_SetPriority(uart->USART_IRQn, ((0x01 << 3) | 0x01));
-
-//    /* Enable Interrupt for UART channel */
-//    NVIC_EnableIRQ(uart->USART_IRQn);
+    /* Enable Interrupt for UART channel */
+    NVIC_EnableIRQ(uart->USART_IRQn);
 
     /* register UART1 device */
     rt_hw_serial_register(&serial0, "uart0",
