@@ -212,16 +212,16 @@ void rt_hw_uart_init(void)
     serial0.config = config;
 
   /* Enable GPIO register interface clock                                     */
-  LPC_CCU1->CLK_M4_GPIO_CFG     |= 1;
-  while (!(LPC_CCU1->CLK_M4_GPIO_STAT   & 1));
+  LPC_CCU1->CLK_M4_GPIO_CFG     |= 0x01;
+  while (!(LPC_CCU1->CLK_M4_GPIO_STAT  & 0x01));
 
   /* Enable USART1 peripheral clock                                           */
-  LPC_CCU2->CLK_APB0_USART0_CFG |= 1;
-  while (!(LPC_CCU2->CLK_APB0_USART0_STAT & 1));
+  LPC_CCU2->CLK_APB0_USART0_CFG |= 0x01;
+  while (!(LPC_CCU2->CLK_APB0_USART0_STAT & 0x01));
 
   /* Enable USART1 register interface clock                                   */
-  LPC_CCU1->CLK_M4_USART0_CFG   |= 1;
-  while (!(LPC_CCU1->CLK_M4_USART0_STAT & 1));
+  LPC_CCU1->CLK_M4_USART0_CFG   |= 0x01;
+  while (!(LPC_CCU1->CLK_M4_USART0_STAT & 0x01));
 
   /* Init GPIO pins                                                           */
   LPC_SCU->SFSP6_4 =  (1 << 6) |        /* Input buffer enabled               */
@@ -232,7 +232,7 @@ void rt_hw_uart_init(void)
                       (1 << 4) |        /* Pull-up disabled                   */
                       (2 << 0) ;        /* Pin P6_5 used as U0_RXD            */
 
-  /* Init USART3                                                              */
+  /* Init USART0                                                              */
   LPC_USART0->LCR    = 0x83;            /* 8 bits, no Parity, 1 Stop bit      */
   LPC_USART0->DLL    = 0x06;            /* 115200 Baudrate @ 12 MHz IRC       */
   LPC_USART0->DLM    = 0x00;
