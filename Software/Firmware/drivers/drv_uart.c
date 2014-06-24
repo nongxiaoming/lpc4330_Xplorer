@@ -26,11 +26,11 @@ struct lpc_uart
 
 static rt_err_t lpc_configure(struct rt_serial_device *serial, struct serial_configure *cfg)
 {
-    struct lpc_uart *uart;
+//    struct lpc_uart *uart;
 
 
     RT_ASSERT(serial != RT_NULL);
-    uart = (struct lpc_uart *)serial->parent.user_data;
+  //  uart = (struct lpc_uart *)serial->parent.user_data;
 
 
 
@@ -76,7 +76,6 @@ static int lpc_putc(struct rt_serial_device *serial, char c)
 
 static int lpc_getc(struct rt_serial_device *serial)
 {
-    uint8_t ch;
     struct lpc_uart *uart;
 
     uart = (struct lpc_uart *)serial->parent.user_data;
@@ -108,37 +107,38 @@ struct rt_serial_device serial0;
 void UART0_IRQHandler(void)
 {
     struct lpc_uart *uart;
-    uint32_t intsrc, tmp, tmp1;
-
+    uint32_t intsrc, temp;
+    
     uart = &uart0;
 
     /* enter interrupt */
     rt_interrupt_enter();
 
-//    /* Determine the interrupt source */
-//    intsrc = UART_GetIntId(uart->UART);
-//    tmp = intsrc & UART_IIR_INTID_MASK;
+    /* Determine the interrupt source */
+    intsrc = uart->USART->IIR & UART_IIR_INTID_MASK;         
+     
+    switch (intsrc) {
+    
+    case UART_IIR_INTID_RLS:                                            /* Receive Line Status interrupt*/
+			  /* read the line status */
+        intsrc = uart->USART->LSR;                                      
+        /* Receive an error data */
+        if (intsrc & UART_LSR_PE) { 
+            temp = LPC_USART0->RBR;
+        }
+        break;
 
-//    // Receive Line Status
-//    if (tmp == UART_IIR_INTID_RLS)
-//    {
-//        // Check line status
-//        tmp1 = UART_GetLineStatus(uart->UART);
-//        // Mask out the Receive Ready and Transmit Holding empty status
-//        tmp1 &= (UART_LSR_OE | UART_LSR_PE | UART_LSR_FE \
-//                 | UART_LSR_BI | UART_LSR_RXFE);
-//        // If any error exist
-//        if (tmp1)
-//        {
-//            //
-//        }
-//    }
-
-//    // Receive Data Available or Character time-out
-//    if ((tmp == UART_IIR_INTID_RDA) || (tmp == UART_IIR_INTID_CTI))
-//    {
-//        rt_hw_serial_isr(&serial0);
-//    }
+    case UART_IIR_INTID_RDA:                                            /*  Receive data               */
+    case UART_IIR_INTID_CTI:                                            /*  Receive data timeout       */
+			 /* read the data to buffer  */
+        while (uart->USART->LSR & UART_LSR_RDR) {
+             rt_hw_serial_isr(&serial0);                    
+        }
+        break;
+    
+    default:
+        break;
+    }
 
     /* leave interrupt */
     rt_interrupt_leave();
@@ -156,37 +156,38 @@ struct rt_serial_device serial2;
 
 void UART2_IRQHandler(void)
 {
-    struct lpc_uart *uart;
-    uint32_t intsrc, tmp, tmp1;
-
+   struct lpc_uart *uart;
+    uint32_t intsrc, temp;
+    
     uart = &uart2;
 
     /* enter interrupt */
     rt_interrupt_enter();
 
     /* Determine the interrupt source */
-    intsrc = UART_GetIntId(uart->UART);
-    tmp = intsrc & UART_IIR_INTID_MASK;
-
-    // Receive Line Status
-    if (tmp == UART_IIR_INTID_RLS)
-    {
-        // Check line status
-        tmp1 = UART_GetLineStatus(uart->UART);
-        // Mask out the Receive Ready and Transmit Holding empty status
-        tmp1 &= (UART_LSR_OE | UART_LSR_PE | UART_LSR_FE \
-                 | UART_LSR_BI | UART_LSR_RXFE);
-        // If any error exist
-        if (tmp1)
-        {
-            //
+    intsrc = uart->USART->IIR & UART_IIR_INTID_MASK;         
+     
+    switch (intsrc) {
+    
+    case UART_IIR_INTID_RLS:                                            /* Receive Line Status interrupt*/
+			  /* read the line status */
+        intsrc = uart->USART->LSR;                                      
+        /* Receive an error data */
+        if (intsrc & UART_LSR_PE) { 
+            temp = LPC_USART0->RBR;
         }
-    }
+        break;
 
-    // Receive Data Available or Character time-out
-    if ((tmp == UART_IIR_INTID_RDA) || (tmp == UART_IIR_INTID_CTI))
-    {
-        rt_hw_serial_isr(&serial2);
+    case UART_IIR_INTID_RDA:                                            /*  Receive data               */
+    case UART_IIR_INTID_CTI:                                            /*  Receive data timeout       */
+			 /* read the data to buffer  */
+        while (uart->USART->LSR & UART_LSR_RDR) {
+             rt_hw_serial_isr(&serial0);                    
+        }
+        break;
+    
+    default:
+        break;
     }
 
     /* leave interrupt */
@@ -264,19 +265,40 @@ void rt_hw_uart_init(void)
     serial2.int_rx = &uart2_int_rx;
     serial2.config = config;
 
-    /*
-     * Initialize UART2 pin connect
-     * P2.8: U2_TXD
-     * P0.11: U2_RXD
-     */
-    PINSEL_ConfigPin(2, 8, 2);
-    PINSEL_ConfigPin(0, 11, 1);
+     /* Enable GPIO register interface clock                                     */
+  LPC_CCU1->CLK_M4_GPIO_CFG     |= 0x01;
+  while (!(LPC_CCU1->CLK_M4_GPIO_STAT  & 0x01));
 
+  /* Enable USART1 peripheral clock                                           */
+  LPC_CCU2->CLK_APB0_USART0_CFG |= 0x01;
+  while (!(LPC_CCU2->CLK_APB2_USART2_STAT & 0x01));
+
+  /* Enable USART2 register interface clock                                   */
+  LPC_CCU1->CLK_M4_USART0_CFG   |= 0x01;
+  while (!(LPC_CCU1->CLK_M4_USART2_STAT & 0x01));
+
+  /* Init GPIO pins                                                           */
+  LPC_SCU->SFSP1_15 =  (1 << 6) |        /* Input buffer enabled               */
+                      (1 << 4) |        /* Pull-up disabled                   */
+                      (1 << 0) ;        /* Pin P1_15 used as U2_TXD            */
+
+  LPC_SCU->SFSP1_16 =  (1 << 6) |        /* Input buffer enabled               */
+                      (1 << 4) |        /* Pull-up disabled                   */
+                      (1 << 0) ;        /* Pin P1_16 used as U2_RXD            */
+
+  /* Init USART2                                                              */
+  LPC_USART2->LCR    = 0x83;            /* 8 bits, no Parity, 1 Stop bit      */
+  LPC_USART2->DLL    = 0x06;            /* 115200 Baudrate @ 12 MHz IRC       */
+  LPC_USART2->DLM    = 0x00;
+  LPC_USART2->FDR    = 0xC1;
+  LPC_USART2->LCR    = 0x03;            /* DLAB = 0                           */
+	/* enable the receive interrupt */
+  LPC_USART2->IER |= UART_IER_RBRINT_EN;
     /* preemption = 1, sub-priority = 1 */
-    NVIC_SetPriority(uart->UART_IRQn, ((0x01 << 3) | 0x01));
+    NVIC_SetPriority(uart->USART_IRQn, ((0x01 << 3) | 0x01));
 
     /* Enable Interrupt for UART channel */
-    NVIC_EnableIRQ(uart->UART_IRQn);
+    NVIC_EnableIRQ(uart->USART_IRQn);
 
     /* register UART1 device */
     rt_hw_serial_register(&serial2, "uart2",
