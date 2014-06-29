@@ -53,7 +53,7 @@ extern int Image$$RW_IRAM1$$ZI$$Limit;
 extern int __bss_end;
 #define HEAP_BEGIN  ((void *)&__bss_end)
 #endif
-#define HEAP_END    (void*)(0x10000000 + 0x10000)
+#define HEAP_END    (void*)(0x10000000 + 0x20000)
 
 void rt_hw_board_init(void);
 int  rt_hw_board_heap_init(void);
