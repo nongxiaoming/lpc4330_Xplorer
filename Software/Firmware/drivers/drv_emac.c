@@ -16,7 +16,7 @@
 #include "lwipopts.h"
 #include <netif/ethernetif.h>
 
-#include "lpc_iap.h"
+#include "lpc_pinsel.h"
 #include "drv_emac.h"
 
 #define EMAC_PHY_AUTO       0
@@ -24,8 +24,9 @@
 #define EMAC_PHY_100MBIT    2
 
 #define MAX_ADDR_LEN 6
-static rt_uint32_t ETH_RAM_BASE[4 * 1024] SECTION("ETH_RAM");
-
+#ifdef __CC_ARM
+static rt_uint32_t ETH_RAM_BASE[4*1024] SECTION("ETH_RAM");
+#endif
 /* EMAC variables located in 16K Ethernet SRAM */
 #define RX_DESC_BASE         (uint32_t)&ETH_RAM_BASE[0]
 #define RX_STAT_BASE        (RX_DESC_BASE + NUM_RX_FRAG*8)
@@ -210,37 +211,16 @@ static rt_err_t lpc_emac_init(rt_device_t dev)
     LPC_SC->PCONP |= (1UL << 30);
 
     /* Enable P1 Ethernet Pins. */
-	
-	   /**< P1_0  ENET_TXD0 */
-	  LPC_IOCON->P1_0 &= ~(0x07);
-	  LPC_IOCON->P1_0 |= 0x01;
-	  /**< P1_1  ENET_TXD1 */
-	  LPC_IOCON->P1_1 &= ~(0x07);
-	  LPC_IOCON->P1_1 |= 0x01;
-    /**< P1_4  ENET_TX_EN */
-	  LPC_IOCON->P1_4 &= ~(0x07);
-	  LPC_IOCON->P1_4 |= 0x01;
-    /**< P1_8  ENET_CRS_DV */
-	  LPC_IOCON->P1_8 &= ~(0x07);
-	  LPC_IOCON->P1_8 |= 0x01;
-     /**< P1_9  ENET_RXD0 */
-    LPC_IOCON->P1_9 &= ~(0x07);
-	  LPC_IOCON->P1_9 |= 0x01;
-		/**< P1_10 ENET_RXD1 */
-		LPC_IOCON->P1_10 &= ~(0x07);
-	  LPC_IOCON->P1_10 |= 0x01;
-    /**< P1_14 ENET_RX_ER */
-    LPC_IOCON->P1_14 &= ~(0x07);
-	  LPC_IOCON->P1_14 |= 0x01;
-		/**< P1_15 ENET_REF_CLK */
-    LPC_IOCON->P1_15 &= ~(0x07);
-	  LPC_IOCON->P1_15 |= 0x01;
-		/**< P1_16 ENET_MDC */
-    LPC_IOCON->P1_16 &= ~(0x07);
-	  LPC_IOCON->P1_16 |= 0x01; 
-		/**< P1_17 ENET_MDIO */
-    LPC_IOCON->P1_17 &= ~(0x07);
-	  LPC_IOCON->P1_17 |= 0x01;  
+    PINSEL_ConfigPin(1, 0, 1);  /**< P1_0  ENET_TXD0 */
+    PINSEL_ConfigPin(1, 1, 1);  /**< P1_1  ENET_TXD1 */
+    PINSEL_ConfigPin(1, 4, 1);  /**< P1_4  ENET_TX_EN */
+    PINSEL_ConfigPin(1, 8, 1);  /**< P1_8  ENET_CRS_DV */
+    PINSEL_ConfigPin(1, 9, 1);  /**< P1_9  ENET_RXD0 */
+    PINSEL_ConfigPin(1, 10, 1); /**< P1_10 ENET_RXD1 */
+    PINSEL_ConfigPin(1, 14, 1); /**< P1_14 ENET_RX_ER */
+    PINSEL_ConfigPin(1, 15, 1); /**< P1_15 ENET_REF_CLK */
+    PINSEL_ConfigPin(1, 16, 1); /**< P1_16 ENET_MDC */
+    PINSEL_ConfigPin(1, 17, 1); /**< P1_17 ENET_MDIO */
 
     /* Reset all EMAC internal modules. */
     LPC_EMAC->MAC1 = MAC1_RES_TX | MAC1_RES_MCS_TX | MAC1_RES_RX | MAC1_RES_MCS_RX |
@@ -486,8 +466,6 @@ struct pbuf *lpc_emac_rx(rt_device_t dev)
 
 int lpc_emac_hw_init(void)
 {
-    uint32_t result[4];
-
     rt_event_init(&tx_event, "tx_event", RT_IPC_FLAG_FIFO);
     rt_sem_init(&sem_lock, "eth_lock", 1, RT_IPC_FLAG_FIFO);
 
@@ -499,10 +477,9 @@ int lpc_emac_hw_init(void)
     lpc_emac_device.dev_addr[1] = 0x60;
     lpc_emac_device.dev_addr[2] = 0x37;
     /* set mac address: (only for test) */
-    ReadDeviceSerialNum(result);
-    lpc_emac_device.dev_addr[3] = result[0] ^ result[1];
-    lpc_emac_device.dev_addr[4] = result[1] ^ result[2];
-    lpc_emac_device.dev_addr[5] = result[2] ^ result[3];
+    lpc_emac_device.dev_addr[3] = 0x12;
+    lpc_emac_device.dev_addr[4] = 0x34;
+    lpc_emac_device.dev_addr[5] = 0x56;
 
     lpc_emac_device.parent.parent.init      = lpc_emac_init;
     lpc_emac_device.parent.parent.open      = lpc_emac_open;
@@ -516,7 +493,7 @@ int lpc_emac_hw_init(void)
     lpc_emac_device.parent.eth_tx           = lpc_emac_tx;
 
     eth_device_init(&(lpc_emac_device.parent), "e0");
-    return 0;
+		return 0;
 }
 INIT_DEVICE_EXPORT(lpc_emac_hw_init);
 
