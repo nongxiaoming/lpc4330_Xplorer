@@ -83,7 +83,7 @@
 // <bool name="RT_USING_NFTL" description="Using NFTL layer" default="true" />
 //#define RT_USING_NFTL
 // <bool name="RT_USING_SPI" description="Using SPI Device Driver Framework" default="true" />
-//#define RT_USING_SPI
+#define RT_USING_SPI
 // <bool name="RT_USING_I2C" description="Using I2C Device Driver Framework" default="true" />
 //#define RT_USING_I2C
 // <bool name="RT_USING_RTC" description="Using RTC Device Driver Framework" default="true" />
