@@ -19,24 +19,24 @@
 #include <rtthread.h>
 #include <drivers/spi.h>
 
-#include "LPC407x_8x_177x_8x.h"
+#include "LPC43xx.h"
 
 //#define SPI_USE_DMA
 
 struct lpc_spi_bus
 {
     struct rt_spi_bus parent;
-    LPC_SSP_TypeDef *SPI;
+    LPC_SSPn_Type *SPI;
 };
 
 struct lpc_spi_cs
 {
-    LPC_GPIO_TypeDef *port;
+    rt_uint32_t port;
     uint8_t pin;
 };
 
 /* public function */
-rt_err_t lpc_spi_register(LPC_SSP_TypeDef *SPI,
+rt_err_t lpc_spi_register(LPC_SSPn_Type *SPI,
                           struct lpc_spi_bus *lpc_spi,
                           const char *spi_bus_name);
 int rt_hw_spi_init(void);
