@@ -18,7 +18,7 @@
 #include "board.h"
 #ifdef RT_USING_SPI
 #include "drv_spi.h"
-#include "lpc_ssp.h"
+
 /* private rt-thread spi ops function */
 static rt_err_t configure(struct rt_spi_device *device, struct rt_spi_configuration *configuration);
 static rt_uint32_t xfer(struct rt_spi_device *device, struct rt_spi_message *message);
@@ -74,7 +74,7 @@ static rt_err_t configure(struct rt_spi_device *device,
         prescale = 2;
         while (cmp_clk > max_hz)
         {
-            cmp_clk = PeripheralClock / ((div + 1) * prescale);
+            cmp_clk = SystemCoreClock / ((div + 1) * prescale);
             if (cmp_clk >  max_hz)
             {
                 div++;
@@ -133,7 +133,7 @@ static rt_uint32_t xfer(struct rt_spi_device *device, struct rt_spi_message *mes
     /* take CS */
     if (message->cs_take)
     {
-        spi_cs->port->CLR |= (0x01 << spi_cs->pin);
+         LPC_GPIO_PORT->CLR[spi_cs->port] |= spi_cs->pin;
     }
 
     {
@@ -200,7 +200,7 @@ static rt_uint32_t xfer(struct rt_spi_device *device, struct rt_spi_message *mes
     /* release CS */
     if (message->cs_release)
     {
-        spi_cs->port->SET |= (0x01 << spi_cs->pin);
+        LPC_GPIO_PORT->SET[spi_cs->port] |= spi_cs->pin;
     }
 
     return message->length;
@@ -214,7 +214,7 @@ static rt_uint32_t xfer(struct rt_spi_device *device, struct rt_spi_message *mes
  * \return
  *
  */
-rt_err_t lpc_spi_register(LPC_SSP_TypeDef *SPI,
+rt_err_t lpc_spi_register(LPC_SSPn_Type *SPI,
                           struct lpc_spi_bus *lpc_spi,
                           const char *spi_bus_name)
 {
@@ -222,19 +222,15 @@ rt_err_t lpc_spi_register(LPC_SSP_TypeDef *SPI,
     {
         lpc_spi->SPI = LPC_SSP0;
         /*enable SSP0 power/clock*/
-        LPC_SC->PCONP |= (0x01 << 21);
+  LPC_CCU1-> CLK_M4_SSP0_CFG |= 0x01;
+  while (!(LPC_CCU1-> CLK_M4_SSP0_STAT & 0x01));
     }
     else if (SPI == LPC_SSP1)
     {
         lpc_spi->SPI = LPC_SSP1;
         /*enable SSP1 power/clock*/
-        LPC_SC->PCONP |= (0x01 << 10);
-    }
-    else if (SPI == LPC_SSP2)
-    {
-        lpc_spi->SPI = LPC_SSP2;
-        /*enable SSP2 power/clock*/
-        LPC_SC->PCONP |= (0x01 << 20);
+        LPC_CCU1-> CLK_M4_SSP1_CFG |= 0x01;
+  while (!(LPC_CCU1-> CLK_M4_SSP1_STAT & 0x01));
     }
     else
     {
@@ -255,45 +251,26 @@ int rt_hw_spi_init(void)
     {
         static struct lpc_spi_bus lpc_spi1;
         lpc_spi_register(LPC_SSP1, &lpc_spi1, "spi1");
-        LPC_IOCON->P4_20 &= ~0x07;
-        LPC_IOCON->P4_20 |= 0x03;
-        LPC_IOCON->P4_22 &= ~0x07;
-        LPC_IOCON->P4_22 |= 0x03;
-        LPC_IOCON->P4_23 &= ~0x07;
-        LPC_IOCON->P4_23 |= 0x03;
+//        LPC_IOCON->P4_20 &= ~0x07;
+//        LPC_IOCON->P4_20 |= 0x03;
+//        LPC_IOCON->P4_22 &= ~0x07;
+//        LPC_IOCON->P4_22 |= 0x03;
+//        LPC_IOCON->P4_23 &= ~0x07;
+//        LPC_IOCON->P4_23 |= 0x03;
     }
     /* attach cs */
     {
         static struct rt_spi_device spi_device;
         static struct lpc_spi_cs  spi_cs1;
         /* spi10: P4.21 */
-        LPC_IOCON->P4_21 &= ~0x07;
-        spi_cs1.port = LPC_GPIO4;
+   //     LPC_IOCON->P4_21 &= ~0x07;
+        spi_cs1.port = 5;
         spi_cs1.pin = 21;
-        spi_cs1.port->DIR |= (0x01 << spi_cs1.pin);
-        spi_cs1.port->SET |= (0x01 << spi_cs1.pin);
+       LPC_GPIO_PORT->DIR[spi_cs1.port] |= spi_cs1.pin;
+     LPC_GPIO_PORT->SET[spi_cs1.port] |= spi_cs1.pin;
         rt_spi_bus_attach_device(&spi_device, "spi10", "spi1", (void *)&spi_cs1);
     }
-    /* register spi bus */
-    {
-        static struct lpc_spi_bus lpc_spi0;
-        lpc_spi_register(LPC_SSP0, &lpc_spi0, "spi0");
-        LPC_IOCON->P2_22 = 0xa2;
-        LPC_IOCON->P2_26 = 0xa2;
-        LPC_IOCON->P2_27 = 0xa2;
-    }
-    /* attach cs */
-    {
-        static struct rt_spi_device spi_device;
-        static struct lpc_spi_cs  spi_cs1;
-        /* spi20: P2.23 */
-        LPC_IOCON->P2_23 &= ~0x07;
-        spi_cs1.port = LPC_GPIO2;
-        spi_cs1.pin = 23;
-        spi_cs1.port->DIR |= (0x01 << spi_cs1.pin);
-        spi_cs1.port->SET |= (0x01 << spi_cs1.pin);
-        rt_spi_bus_attach_device(&spi_device, "spi00", "spi0", (void *)&spi_cs1);
-    }
+
 
     return 0;
 }
