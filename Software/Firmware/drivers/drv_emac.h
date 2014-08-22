@@ -17,241 +17,225 @@
 
 #include "board.h"
 
-/* EMAC Memory Buffer configuration for 16K Ethernet RAM. */
-#define NUM_RX_FRAG         4           /* Num.of RX Fragments 4*1536= 6.0kB */
-#define NUM_TX_FRAG         3           /* Num.of TX Fragments 3*1536= 4.6kB */
-#define ETH_FRAG_SIZE       1536        /* Packet Fragment size 1536 Bytes   */
+/* ETH Memory Buffer configuration. */
+#define NUM_RX_BUF          4           /* 0x1800 for Rx (4*1536=6K)          */
+#define NUM_TX_BUF          4           /* 0x0600 for Tx (2*1536=3K)          */
+#define ETH_BUF_SIZE        1536        /* ETH Receive/Transmit buffer size   */
 
-#define ETH_MAX_FLEN        1536        /* Max. Ethernet Frame Size          */
+#define CSR_CLK_RANGE       0x0003      /* CSR Clock range 100-150MHz         */
+
+/* DMA Descriptors. */
+typedef struct {
+  uint32_t volatile Stat;
+  uint32_t Ctrl;
+  uint32_t Addr;
+  uint32_t Next;
+  uint32_t Ext;
+  uint32_t Rsvd;
+  uint32_t RTSL;
+  uint32_t RTSH;
+} RX_Desc;
+
+typedef struct {
+  uint32_t volatile CtrlStat;
+  uint32_t Size;
+  uint32_t Addr;
+  uint32_t Next;
+  uint32_t Rsvd1;
+  uint32_t Rsvd2;
+  uint32_t RTSL;
+  uint32_t RTSH;
+} TX_Desc;
+
+/* DMA Descriptor RX Packet Status */
+#define DMA_RX_OWN          0x80000000  /* Own bit 1=DMA, 0=CPU               */
+#define DMA_RX_AFM          0x40000000  /* Destination address filter fail    */
+#define DMA_RX_FL           0x3FFF0000  /* Frame length mask                  */
+#define DMA_RX_ES           0x00008000  /* Error summary                      */
+#define DMA_RX_DE           0x00004000  /* Descriptor error                   */
+#define DMA_RX_SAF          0x00002000  /* Source address filter fail         */
+#define DMA_RX_LE           0x00001000  /* Length error                       */
+#define DMA_RX_OE           0x00000800  /* Overflow error                     */
+#define DMA_RX_VLAN         0x00000400  /* VLAN tag                           */
+#define DMA_RX_FS           0x00000200  /* First descriptor                   */
+#define DMA_RX_LS           0x00000100  /* Last descriptor                    */
+#define DMA_RX_TSA          0x00000080  /* Timestamp Avail/IP checksum error  */
+#define DMA_RX_LC           0x00000040  /* late collision                     */
+#define DMA_RX_FT           0x00000020  /* Frame type                         */
+#define DMA_RX_RWT          0x00000010  /* Receive watchdog timeout           */
+#define DMA_RX_RE           0x00000008  /* Receive error                      */
+#define DMA_RX_DRE          0x00000004  /* Dribble bit error                  */
+#define DMA_RX_CE           0x00000002  /* CRC error                          */
+#define DMA_RX_ESA          0x00000001  /* Extended Status/Rx MAC Address     */
+
+/* DMA Descriptor RX Packet Control */
+#define DMA_RX_RBS2         0x1FFF0000  /* Receive Buffer 2 size              */
+#define DMA_RX_RER          0x00008000  /* Receive End of Ring                */
+#define DMA_RX_RCH          0x00004000  /* Second Address Chained             */
+#define DMA_RX_RBS1         0x00003FFF  /* Receive Buffer 1 size              */
+
+/* DMA Descriptor TX Packet Control/Status */
+#define DMA_TX_OWN          0x80000000  /* Own bit 1=DMA, 0=CPU               */
+#define DMA_TX_IC           0x40000000  /* Interrupt on completition          */
+#define DMA_TX_LS           0x20000000  /* Last segment                       */
+#define DMA_TX_FS           0x10000000  /* First segment                      */
+#define DMA_TX_DC           0x08000000  /* Disable CRC                        */
+#define DMA_TX_DP           0x04000000  /* Disable pad                        */
+#define DMA_TX_TTSE         0x02000000  /* Transmit time stamp enable         */
+#define DMA_TX_CIC          0x00C00000  /* Checksum insertion control         */
+#define DMA_TX_TER          0x00200000  /* Transmit end of ring               */
+#define DMA_TX_TCH          0x00100000  /* Second address chained             */
+#define DMA_TX_TTSS         0x00020000  /* Transmit time stamp status         */
+#define DMA_TX_IHE          0x00010000  /* IP header error status             */
+#define DMA_TX_ES           0x00008000  /* Error summary                      */
+#define DMA_TX_JT           0x00004000  /* Jabber timeout                     */
+#define DMA_TX_FF           0x00002000  /* Frame flushed                      */
+#define DMA_TX_IPE          0x00001000  /* IP payload error                   */
+#define DMA_TX_LC           0x00000800  /* Loss of carrier                    */
+#define DMA_TX_NC           0x00000400  /* No carrier                         */
+#define DMA_TX_LCOL         0x00000200  /* Late collision                     */
+#define DMA_TX_EC           0x00000100  /* Excessive collision                */
+#define DMA_TX_VF           0x00000080  /* VLAN frame                         */
+#define DMA_TX_CC           0x00000078  /* Collision count                    */
+#define DMA_TX_ED           0x00000004  /* Excessive deferral                 */
+#define DMA_TX_UF           0x00000002  /* Underflow error                    */
+#define DMA_TX_DB           0x00000001  /* Deferred bit                       */
+
+#define DMA_RX_ERROR_MASK   (DMA_RX_ES | DMA_RX_LE | DMA_RX_RWT | \
+                             DMA_RX_RE | DMA_RX_CE)
+#define DMA_RX_SEG_MASK     (DMA_RX_FS | DMA_RX_LS)
 
 
-/* MAC Configuration Register 1 */
-#define MAC1_REC_EN         0x00000001  /* Receive Enable                    */
-#define MAC1_PASS_ALL       0x00000002  /* Pass All Receive Frames           */
-#define MAC1_RX_FLOWC       0x00000004  /* RX Flow Control                   */
-#define MAC1_TX_FLOWC       0x00000008  /* TX Flow Control                   */
-#define MAC1_LOOPB          0x00000010  /* Loop Back Mode                    */
-#define MAC1_RES_TX         0x00000100  /* Reset TX Logic                    */
-#define MAC1_RES_MCS_TX     0x00000200  /* Reset MAC TX Control Sublayer     */
-#define MAC1_RES_RX         0x00000400  /* Reset RX Logic                    */
-#define MAC1_RES_MCS_RX     0x00000800  /* Reset MAC RX Control Sublayer     */
-#define MAC1_SIM_RES        0x00004000  /* Simulation Reset                  */
-#define MAC1_SOFT_RES       0x00008000  /* Soft Reset MAC                    */
+/* MAC Configuration Register */
+#define MCR_WD              0x00800000  /* Watchdog disable                   */
+#define MCR_JD              0x00400000  /* Jabber disable                     */
+#define MCR_JE              0x00100000  /* Jumbo Frame Enable                 */
+#define MCR_IFG             0x000E0000  /* Interframe gap mask                */
+#define MCR_DCRS            0x00010000  /* Disable carrier sense during tx    */
+#define MCR_PS              0x00008000  /* Port Select                        */
+#define MCR_FES             0x00004000  /* Speed                              */
+#define MCR_DO              0x00002000  /* Disable Receive Own                */
+#define MCR_LM              0x00001000  /* Loopback mode                      */
+#define MCR_DM              0x00000800  /* Duplex mode                        */
+#define MCR_IPC             0x00000400  /* Checksum offload                   */
+#define MCR_DR              0x00000200  /* Disable Retry                      */
+#define MCR_ACS             0x00000080  /* Automatic pad / CRC stripping      */
+#define MCR_BL              0x00000060  /* Back-off limit mask                */
+#define MCR_DF              0x00000010  /* Deferral check                     */
+#define MCR_TE              0x00000008  /* Transmitter enable                 */
+#define MCR_RE              0x00000004  /* Receiver enable                    */
 
-/* MAC Configuration Register 2 */
-#define MAC2_FULL_DUP       0x00000001  /* Full Duplex Mode                  */
-#define MAC2_FRM_LEN_CHK    0x00000002  /* Frame Length Checking             */
-#define MAC2_HUGE_FRM_EN    0x00000004  /* Huge Frame Enable                 */
-#define MAC2_DLY_CRC        0x00000008  /* Delayed CRC Mode                  */
-#define MAC2_CRC_EN         0x00000010  /* Append CRC to every Frame         */
-#define MAC2_PAD_EN         0x00000020  /* Pad all Short Frames              */
-#define MAC2_VLAN_PAD_EN    0x00000040  /* VLAN Pad Enable                   */
-#define MAC2_ADET_PAD_EN    0x00000080  /* Auto Detect Pad Enable            */
-#define MAC2_PPREAM_ENF     0x00000100  /* Pure Preamble Enforcement         */
-#define MAC2_LPREAM_ENF     0x00000200  /* Long Preamble Enforcement         */
-#define MAC2_NO_BACKOFF     0x00001000  /* No Backoff Algorithm              */
-#define MAC2_BACK_PRESSURE  0x00002000  /* Backoff Presurre / No Backoff     */
-#define MAC2_EXCESS_DEF     0x00004000  /* Excess Defer                      */
+/* MAC Frame Filter Register */
+#define MFFR_RA             0x80000000  /* Receive all                        */
+#define MFFR_SAF            0x00000200  /* Source address filter              */
+#define MFFR_SAIF           0x00000100  /* Source address inverse filtering   */
+#define MFFR_PCF            0x000000C0  /* Pass control frames mask           */
+#define MFFR_DBF            0x00000020  /* Disable Broadcase Frames           */
+#define MFFR_PAM            0x00000010  /* Pass all multicast                 */
+#define MFFR_DAIF           0x00000008  /* Dest. address inverse filtering    */
+#define MFFR_PM             0x00000001  /* Promiscuous mode                   */
 
-/* Back-to-Back Inter-Packet-Gap Register */
-#define IPGT_FULL_DUP       0x00000015  /* Recommended value for Full Duplex */
-#define IPGT_HALF_DUP       0x00000012  /* Recommended value for Half Duplex */
+/* MAC MII Address Register */
+#define MMAR_GB             0x00000001  /* MII busy                           */
+#define MMAR_MW             0x00000002  /* MII write                          */
+#define MMAR_CR             0x0000001C  /* Clock range                        */
+#define MMAR_GR             0x000007C0  /* MII register address mask          */
+#define MMAR_PA             0x0000F800  /* PHY address mask                   */
 
-/* Non Back-to-Back Inter-Packet-Gap Register */
-#define IPGR_DEF            0x00000012  /* Recommended value                 */
+/* MAC MII Data Register */
+#define MMDR_GD             0x0000FFFF  /* MII 16-bit rw data                 */
 
-/* Collision Window/Retry Register */
-#define CLRT_DEF            0x0000370F  /* Default value                     */
+/* MAC Flow Control Register */
+#define MFCR_PT             0xFFFF0000  /* Pause time mask                    */
+#define MFCR_DZQP           0x00000080  /* Disable Zero-Quanta Pause          */
+#define MFCR_PLT            0x00000030  /* Pause low threshold                */
+#define MFCR_UP             0x00000008  /* Unicaste pause frame detect        */
+#define MFCR_RFE            0x00000004  /* Receive flow control enable        */
+#define MFCR_TFE            0x00000002  /* Transmit flow control enable       */
+#define MFCR_FCB            0x00000001  /* Flow Ctrl Busy/Backpressure Act.   */
 
-/* PHY Support Register */
-#define SUPP_SPEED          0x00000100  /* Reduced MII Logic Current Speed   */
-#define SUPP_RES_RMII       0x00000800  /* Reset Reduced MII Logic           */
+/* DMA Status Register */
+#define DSR_TSTS            0x20000000  /* Timestamp trigger status           */
+#define DSR_PMTS            0x10000000  /* PMT status                         */
+#define DSR_MMCS            0x08000000  /* MMC status                         */
+#define DSR_EBS             0x03800000  /* Error bits status mask             */
+#define DSR_TPS             0x00700000  /* Transmit process state             */
+#define DSR_RPS             0x000E0000  /* Receive process state              */
 
-/* Test Register */
-#define TEST_SHCUT_PQUANTA  0x00000001  /* Shortcut Pause Quanta             */
-#define TEST_TST_PAUSE      0x00000002  /* Test Pause                        */
-#define TEST_TST_BACKP      0x00000004  /* Test Back Pressure                */
+#define DSR_NIS             0x00010000  /* Normal interrupt summary           */
+#define DSR_AIE             0x00008000  /* Abnormal interrupt summary         */
+#define DSR_ERI             0x00004000  /* Early receive interrupt            */
+#define DSR_FBI             0x00002000  /* Fatal bus error interrupt          */
+#define DSR_ETI             0x00000400  /* Early transmit interrupt           */
+#define DSR_RWT             0x00000200  /* Receive watchdog timeout status    */
+#define DSR_RPSS            0x00000100  /* Receive process stopped status     */
+#define DSR_RU              0x00000080  /* Receive buffer unavailable status  */
+#define DSR_RI              0x00000040  /* Receive interrupt                  */
+#define DSR_UNF             0x00000020  /* Transmit underflow status          */
+#define DSR_OVF             0x00000010  /* Receive overflow status            */
+#define DSR_TJT             0x00000008  /* Transmit jabber timeout            */
+#define DSR_TU              0x00000004  /* Transmit buffer unavailable        */
+#define DSR_TPSS            0x00000002  /* Transmit process stopped status    */
+#define DSR_TI              0x00000001  /* Transmit interrupt                 */
 
-/* MII Management Configuration Register */
-#define MCFG_SCAN_INC       0x00000001  /* Scan Increment PHY Address        */
-#define MCFG_SUPP_PREAM     0x00000002  /* Suppress Preamble                 */
-#define MCFG_CLK_SEL        0x0000001C  /* Clock Select Mask                 */
-#define MCFG_RES_MII        0x00008000  /* Reset MII Management Hardware     */
+/* DMA Bus Mode Register */
+#define DBMR_TXPR           0x08000000  /* DMA Tx priority                    */
+#define DBMR_MB             0x04000000  /* Mixed burst                        */
+#define DBMR_AAL            0x02000000  /* Address-aligned beats              */
+#define DBMR_PBL8x          0x01000000  /* 8 x PBL mode                       */
+#define DBMR_USP            0x00800000  /* Use separate PBL                   */
+#define DBMR_RPBL           0x007E0000  /* Rx DMA PBL mask                    */
+#define DBMR_FB             0x00010000  /* Fixed burst                        */
+#define DBMR_PR             0x0000C000  /* Rx-to-Tx priority ratio            */
+#define DBMR_PBL            0x00003F00  /* Programmable burst length mask     */
+#define DBMR_ATDS           0x00000080  /* Alternate (Enh.) descriptor size   */
+#define DBMR_DSL            0x0000007C  /* Descriptor skip length             */
+#define DBMR_DA             0x00000002  /* DMA arbitration                    */
+#define DBMR_SWR            0x00000001  /* Software reset                     */
 
-#define MCFG_CLK_DIV4       0x00000000  /* MDC = hclk / 4                    */
-#define MCFG_CLK_DIV6       0x00000008  /* MDC = hclk / 6                    */
-#define MCFG_CLK_DIV8       0x0000000C  /* MDC = hclk / 8                    */
-#define MCFG_CLK_DIV10      0x00000010  /* MDC = hclk / 10                   */
-#define MCFG_CLK_DIV14      0x00000014  /* MDC = hclk / 14                   */
-#define MCFG_CLK_DIV20      0x00000018  /* MDC = hclk / 20                   */
-#define MCFG_CLK_DIV28      0x0000001C  /* MDC = hclk / 28                   */
+/* DMA Operation Mode Register */
+#define DOMR_DTCEFD         0x04000000  /* Dropping of TCP/IP chksum err dis. */
+#define DOMR_RSF            0x02000000  /* Receive store and forward          */
+#define DOMR_DFRF           0x01000000  /* Disable flushing of received frms  */
+#define DOMR_TSF            0x00200000  /* Transmit storea and forward        */
+#define DOMR_FTF            0x00100000  /* Flush transmit FIFO                */
+#define DOMR_TTC            0x0001C000  /* Transmit treshold control mask     */
+#define DOMR_ST             0x00002000  /* Start/stop transmission            */
+#define DOMR_FEF            0x00000080  /* Forward error frames               */
+#define DOMR_FUGF           0x00000040  /* Forward undersized good frames     */
+#define DOMR_RTC            0x00000018  /* Receive threshold control mask     */
+#define DOMR_OSF            0x00000004  /* Operate on second frame            */
+#define DOMR_SR             0x00000002  /* Start/stop receive                 */
 
+/* DMA Interrupt Enable Register */
+#define INT_NISE            0x00010000  /* Normal interrupt summary           */
+#define INT_AISE            0x00008000  /* Abnormal interrupt summary         */
+#define INT_ERIE            0x00004000  /* Early receive interrupt            */
+#define INT_FBEIE           0x00002000  /* Fatal bus error interrupt          */
+#define INT_ETIE            0x00000400  /* Early transmit interrupt           */
+#define INT_RWTIE           0x00000200  /* Receive watchdog timeout interrupt */
+#define INT_RPSIE           0x00000100  /* Receive process stopped intterrupt */
+#define INT_RBUIE           0x00000080  /* Receive buffer unavailable inter.  */
+#define INT_RIE             0x00000040  /* Receive interrupt                  */
+#define INT_TUIE            0x00000020  /* Transmit underflow interrupt       */
+#define INT_ROIE            0x00000010  /* Receive overflow interrupt         */
+#define INT_TJTIE           0x00000008  /* Transmit jabber timeout interrupt  */
+#define INT_TBUIE           0x00000004  /* Transmit buffer unavailable inter. */
+#define INT_TPSIE           0x00000002  /* Transmit process stopped interrupt */
+#define INT_TIE             0x00000001  /* Transmit interrupt                 */
+
+/* Wait for operation to finish timeout */
+#define TIMEOUT             0x10000
 
 /* MII Management Command Register */
-#define MCMD_READ           0x00000001  /* MII Read                          */
-#define MCMD_SCAN           0x00000002  /* MII Scan continuously             */
-
-#define MII_WR_TOUT         0x00050000  /* MII Write timeout count           */
-#define MII_RD_TOUT         0x00050000  /* MII Read timeout count            */
+#define MII_WR_TOUT         0x00050000  /* MII Write timeout count            */
+#define MII_RD_TOUT         0x00050000  /* MII Read timeout count             */
 
 /* MII Management Address Register */
-#define MADR_REG_ADR        0x0000001F  /* MII Register Address Mask         */
-#define MADR_PHY_ADR        0x00001F00  /* PHY Address Mask                  */
+#define MADR_PHY_ADR        0x00001F00  /* PHY Address Mask                   */
 
-/* MII Management Indicators Register */
-#define MIND_BUSY           0x00000001  /* MII is Busy                       */
-#define MIND_SCAN           0x00000002  /* MII Scanning in Progress          */
-#define MIND_NOT_VAL        0x00000004  /* MII Read Data not valid           */
-#define MIND_MII_LINK_FAIL  0x00000008  /* MII Link Failed                   */
-
-/* Command Register */
-#define CR_RX_EN            0x00000001  /* Enable Receive                    */
-#define CR_TX_EN            0x00000002  /* Enable Transmit                   */
-#define CR_REG_RES          0x00000008  /* Reset Host Registers              */
-#define CR_TX_RES           0x00000010  /* Reset Transmit Datapath           */
-#define CR_RX_RES           0x00000020  /* Reset Receive Datapath            */
-#define CR_PASS_RUNT_FRM    0x00000040  /* Pass Runt Frames                  */
-#define CR_PASS_RX_FILT     0x00000080  /* Pass RX Filter                    */
-#define CR_TX_FLOW_CTRL     0x00000100  /* TX Flow Control                   */
-#define CR_RMII             0x00000200  /* Reduced MII Interface             */
-#define CR_FULL_DUP         0x00000400  /* Full Duplex                       */
-
-/* Status Register */
-#define SR_RX_EN            0x00000001  /* Enable Receive                    */
-#define SR_TX_EN            0x00000002  /* Enable Transmit                   */
-
-/* Transmit Status Vector 0 Register */
-#define TSV0_CRC_ERR        0x00000001  /* CRC error                         */
-#define TSV0_LEN_CHKERR     0x00000002  /* Length Check Error                */
-#define TSV0_LEN_OUTRNG     0x00000004  /* Length Out of Range               */
-#define TSV0_DONE           0x00000008  /* Tramsmission Completed            */
-#define TSV0_MCAST          0x00000010  /* Multicast Destination             */
-#define TSV0_BCAST          0x00000020  /* Broadcast Destination             */
-#define TSV0_PKT_DEFER      0x00000040  /* Packet Deferred                   */
-#define TSV0_EXC_DEFER      0x00000080  /* Excessive Packet Deferral         */
-#define TSV0_EXC_COLL       0x00000100  /* Excessive Collision               */
-#define TSV0_LATE_COLL      0x00000200  /* Late Collision Occured            */
-#define TSV0_GIANT          0x00000400  /* Giant Frame                       */
-#define TSV0_UNDERRUN       0x00000800  /* Buffer Underrun                   */
-#define TSV0_BYTES          0x0FFFF000  /* Total Bytes Transferred           */
-#define TSV0_CTRL_FRAME     0x10000000  /* Control Frame                     */
-#define TSV0_PAUSE          0x20000000  /* Pause Frame                       */
-#define TSV0_BACK_PRESS     0x40000000  /* Backpressure Method Applied       */
-#define TSV0_VLAN           0x80000000  /* VLAN Frame                        */
-
-/* Transmit Status Vector 1 Register */
-#define TSV1_BYTE_CNT       0x0000FFFF  /* Transmit Byte Count               */
-#define TSV1_COLL_CNT       0x000F0000  /* Transmit Collision Count          */
-
-/* Receive Status Vector Register */
-#define RSV_BYTE_CNT        0x0000FFFF  /* Receive Byte Count                */
-#define RSV_PKT_IGNORED     0x00010000  /* Packet Previously Ignored         */
-#define RSV_RXDV_SEEN       0x00020000  /* RXDV Event Previously Seen        */
-#define RSV_CARR_SEEN       0x00040000  /* Carrier Event Previously Seen     */
-#define RSV_REC_CODEV       0x00080000  /* Receive Code Violation            */
-#define RSV_CRC_ERR         0x00100000  /* CRC Error                         */
-#define RSV_LEN_CHKERR      0x00200000  /* Length Check Error                */
-#define RSV_LEN_OUTRNG      0x00400000  /* Length Out of Range               */
-#define RSV_REC_OK          0x00800000  /* Frame Received OK                 */
-#define RSV_MCAST           0x01000000  /* Multicast Frame                   */
-#define RSV_BCAST           0x02000000  /* Broadcast Frame                   */
-#define RSV_DRIB_NIBB       0x04000000  /* Dribble Nibble                    */
-#define RSV_CTRL_FRAME      0x08000000  /* Control Frame                     */
-#define RSV_PAUSE           0x10000000  /* Pause Frame                       */
-#define RSV_UNSUPP_OPC      0x20000000  /* Unsupported Opcode                */
-#define RSV_VLAN            0x40000000  /* VLAN Frame                        */
-
-/* Flow Control Counter Register */
-#define FCC_MIRR_CNT        0x0000FFFF  /* Mirror Counter                    */
-#define FCC_PAUSE_TIM       0xFFFF0000  /* Pause Timer                       */
-
-/* Flow Control Status Register */
-#define FCS_MIRR_CNT        0x0000FFFF  /* Mirror Counter Current            */
-
-/* Receive Filter Control Register */
-#define RFC_UCAST_EN        0x00000001  /* Accept Unicast Frames Enable      */
-#define RFC_BCAST_EN        0x00000002  /* Accept Broadcast Frames Enable    */
-#define RFC_MCAST_EN        0x00000004  /* Accept Multicast Frames Enable    */
-#define RFC_UCAST_HASH_EN   0x00000008  /* Accept Unicast Hash Filter Frames */
-#define RFC_MCAST_HASH_EN   0x00000010  /* Accept Multicast Hash Filter Fram.*/
-#define RFC_PERFECT_EN      0x00000020  /* Accept Perfect Match Enable       */
-#define RFC_MAGP_WOL_EN     0x00001000  /* Magic Packet Filter WoL Enable    */
-#define RFC_PFILT_WOL_EN    0x00002000  /* Perfect Filter WoL Enable         */
-
-/* Receive Filter WoL Status/Clear Registers */
-#define WOL_UCAST           0x00000001  /* Unicast Frame caused WoL          */
-#define WOL_BCAST           0x00000002  /* Broadcast Frame caused WoL        */
-#define WOL_MCAST           0x00000004  /* Multicast Frame caused WoL        */
-#define WOL_UCAST_HASH      0x00000008  /* Unicast Hash Filter Frame WoL     */
-#define WOL_MCAST_HASH      0x00000010  /* Multicast Hash Filter Frame WoL   */
-#define WOL_PERFECT         0x00000020  /* Perfect Filter WoL                */
-#define WOL_RX_FILTER       0x00000080  /* RX Filter caused WoL              */
-#define WOL_MAG_PACKET      0x00000100  /* Magic Packet Filter caused WoL    */
-
-/* Interrupt Status/Enable/Clear/Set Registers */
-#define INT_RX_OVERRUN      0x00000001  /* Overrun Error in RX Queue         */
-#define INT_RX_ERR          0x00000002  /* Receive Error                     */
-#define INT_RX_FIN          0x00000004  /* RX Finished Process Descriptors   */
-#define INT_RX_DONE         0x00000008  /* Receive Done                      */
-#define INT_TX_UNDERRUN     0x00000010  /* Transmit Underrun                 */
-#define INT_TX_ERR          0x00000020  /* Transmit Error                    */
-#define INT_TX_FIN          0x00000040  /* TX Finished Process Descriptors   */
-#define INT_TX_DONE         0x00000080  /* Transmit Done                     */
-#define INT_SOFT_INT        0x00001000  /* Software Triggered Interrupt      */
-#define INT_WAKEUP          0x00002000  /* Wakeup Event Interrupt            */
-
-/* Power Down Register */
-#define PD_POWER_DOWN       0x80000000  /* Power Down MAC                    */
-
-/* RX Descriptor Control Word */
-#define RCTRL_SIZE          0x000007FF  /* Buffer size mask                  */
-#define RCTRL_INT           0x80000000  /* Generate RxDone Interrupt         */
-
-/* RX Status Hash CRC Word */
-#define RHASH_SA            0x000001FF  /* Hash CRC for Source Address       */
-#define RHASH_DA            0x001FF000  /* Hash CRC for Destination Address  */
-
-/* RX Status Information Word */
-#define RINFO_SIZE          0x000007FF  /* Data size in bytes                */
-#define RINFO_CTRL_FRAME    0x00040000  /* Control Frame                     */
-#define RINFO_VLAN          0x00080000  /* VLAN Frame                        */
-#define RINFO_FAIL_FILT     0x00100000  /* RX Filter Failed                  */
-#define RINFO_MCAST         0x00200000  /* Multicast Frame                   */
-#define RINFO_BCAST         0x00400000  /* Broadcast Frame                   */
-#define RINFO_CRC_ERR       0x00800000  /* CRC Error in Frame                */
-#define RINFO_SYM_ERR       0x01000000  /* Symbol Error from PHY             */
-#define RINFO_LEN_ERR       0x02000000  /* Length Error                      */
-#define RINFO_RANGE_ERR     0x04000000  /* Range Error (exceeded max. size)  */
-#define RINFO_ALIGN_ERR     0x08000000  /* Alignment Error                   */
-#define RINFO_OVERRUN       0x10000000  /* Receive overrun                   */
-#define RINFO_NO_DESCR      0x20000000  /* No new Descriptor available       */
-#define RINFO_LAST_FLAG     0x40000000  /* Last Fragment in Frame            */
-#define RINFO_ERR           0x80000000  /* Error Occured (OR of all errors)  */
-
-#define RINFO_ERR_MASK     (RINFO_FAIL_FILT | RINFO_CRC_ERR   | RINFO_SYM_ERR | \
-                            RINFO_LEN_ERR   | RINFO_ALIGN_ERR | RINFO_OVERRUN)
-
-/* TX Descriptor Control Word */
-#define TCTRL_SIZE          0x000007FF  /* Size of data buffer in bytes      */
-#define TCTRL_OVERRIDE      0x04000000  /* Override Default MAC Registers    */
-#define TCTRL_HUGE          0x08000000  /* Enable Huge Frame                 */
-#define TCTRL_PAD           0x10000000  /* Pad short Frames to 64 bytes      */
-#define TCTRL_CRC           0x20000000  /* Append a hardware CRC to Frame    */
-#define TCTRL_LAST          0x40000000  /* Last Descriptor for TX Frame      */
-#define TCTRL_INT           0x80000000  /* Generate TxDone Interrupt         */
-
-/* TX Status Information Word */
-#define TINFO_COL_CNT       0x01E00000  /* Collision Count                   */
-#define TINFO_DEFER         0x02000000  /* Packet Deferred (not an error)    */
-#define TINFO_EXCESS_DEF    0x04000000  /* Excessive Deferral                */
-#define TINFO_EXCESS_COL    0x08000000  /* Excessive Collision               */
-#define TINFO_LATE_COL      0x10000000  /* Late Collision Occured            */
-#define TINFO_UNDERRUN      0x20000000  /* Transmit Underrun                 */
-#define TINFO_NO_DESCR      0x40000000  /* No new Descriptor available       */
-#define TINFO_ERR           0x80000000  /* Error Occured (OR of all errors)  */
-
-/* ENET Device Revision ID */
-#define OLD_EMAC_MODULE_ID  0x39022000  /* Rev. ID for first rev '-'         */
+/*  Misc    */
+#define ETHERNET_RST  (1 << 22)         /* Reset Unit ETH reset bit           */
 
 /* DP83848C PHY Registers */
 #define PHY_REG_BMCR        0x00        /* Basic Mode Control Register       */
@@ -277,11 +261,17 @@
 #define PHY_REG_CDCTRL1     0x1B        /* CD Test Control and BIST Extens.  */
 #define PHY_REG_EDCR        0x1D        /* Energy Detect Control Register    */
 
+/* PHY Control and Status bits  */
 #define PHY_FULLD_100M      0x2100      /* Full Duplex 100Mbit               */
 #define PHY_HALFD_100M      0x2000      /* Half Duplex 100Mbit               */
 #define PHY_FULLD_10M       0x0100      /* Full Duplex 10Mbit                */
 #define PHY_HALFD_10M       0x0000      /* Half Duplex 10MBit                */
 #define PHY_AUTO_NEG        0x3000      /* Select Auto Negotiation           */
+#define PHY_AUTO_NEG_DONE   0x0020      /* AutoNegotiation Complete (BMSR reg)*/
+#define PHY_BMCR_RESET      0x8000      /* Reset bit (BMCR reg)               */
+#define LINK_VALID_STS      0x0001      /* Link Valid Status (REG_STS reg)    */
+#define FULL_DUP_STS        0x0004      /* Full Duplex Status (REG_STS reg)   */
+#define SPEED_10M_STS       0x0002      /* 10Mbps Status (REG_STS reg)        */
 
 #define DP83848C_DEF_ADR    0x0F00      /* Default PHY device address        */
 #define DP83848C_ID         0x20005C90  /* PHY Identifier                    */

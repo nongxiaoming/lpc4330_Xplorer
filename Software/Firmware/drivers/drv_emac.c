@@ -16,7 +16,6 @@
 #include "lwipopts.h"
 #include <netif/ethernetif.h>
 
-#include "lpc_pinsel.h"
 #include "drv_emac.h"
 
 #define EMAC_PHY_AUTO       0
@@ -24,27 +23,18 @@
 #define EMAC_PHY_100MBIT    2
 
 #define MAX_ADDR_LEN 6
-#ifdef __CC_ARM
-static rt_uint32_t ETH_RAM_BASE[4*1024] SECTION("ETH_RAM");
-#endif
-/* EMAC variables located in 16K Ethernet SRAM */
-#define RX_DESC_BASE         (uint32_t)&ETH_RAM_BASE[0]
-#define RX_STAT_BASE        (RX_DESC_BASE + NUM_RX_FRAG*8)
-#define TX_DESC_BASE        (RX_STAT_BASE + NUM_RX_FRAG*8)
-#define TX_STAT_BASE        (TX_DESC_BASE + NUM_TX_FRAG*8)
-#define RX_BUF_BASE         (TX_STAT_BASE + NUM_TX_FRAG*4)
-#define TX_BUF_BASE         (RX_BUF_BASE  + NUM_RX_FRAG*ETH_FRAG_SIZE)
 
-/* RX and TX descriptor and status definitions. */
-#define RX_DESC_PACKET(i)   (*(unsigned int *)(RX_DESC_BASE   + 8*i))
-#define RX_DESC_CTRL(i)     (*(unsigned int *)(RX_DESC_BASE+4 + 8*i))
-#define RX_STAT_INFO(i)     (*(unsigned int *)(RX_STAT_BASE   + 8*i))
-#define RX_STAT_HASHCRC(i)  (*(unsigned int *)(RX_STAT_BASE+4 + 8*i))
-#define TX_DESC_PACKET(i)   (*(unsigned int *)(TX_DESC_BASE   + 8*i))
-#define TX_DESC_CTRL(i)     (*(unsigned int *)(TX_DESC_BASE+4 + 8*i))
-#define TX_STAT_INFO(i)     (*(unsigned int *)(TX_STAT_BASE   + 4*i))
-#define RX_BUF(i)           (RX_BUF_BASE + ETH_FRAG_SIZE*i)
-#define TX_BUF(i)           (TX_BUF_BASE + ETH_FRAG_SIZE*i)
+/* Local variables */
+static rt_uint8_t TxBufIndex;
+static rt_uint8_t RxBufIndex;
+
+/* ENET local DMA Descriptors. */
+static RX_Desc Rx_Desc[NUM_RX_BUF];
+static TX_Desc Tx_Desc[NUM_TX_BUF];
+
+/* ENET local DMA buffers. */
+static rt_uint32_t rx_buf[NUM_RX_BUF][ETH_BUF_SIZE>>2] SECTION("ETH_RAM");
+static rt_uint32_t tx_buf[NUM_TX_BUF][ETH_BUF_SIZE>>2] SECTION("ETH_RAM");
 
 struct lpc_emac
 {
@@ -103,24 +93,73 @@ void ENET_IRQHandler(void)
     /* leave interrupt */
     rt_interrupt_leave();
 }
+void ETHERNET_IRQHandler (void) {
+  OS_FRAME *frame;
+  U32 i, RxLen;
+  U32 *sp,*dp;
+
+  i = RxBufIndex;
+  do {
+    if (Rx_Desc[i].Stat & DMA_RX_ERROR_MASK) {
+      goto rel;
+    }
+    if ((Rx_Desc[i].Stat & DMA_RX_SEG_MASK) != DMA_RX_SEG_MASK) {
+      goto rel;
+    }
+    RxLen = ((Rx_Desc[i].Stat >> 16) & 0x3FFF) - 4;
+    if (RxLen > ETH_MTU) {
+      /* Packet too big, ignore it and free buffer. */
+      goto rel;
+    }
+    /* Flag 0x80000000 to skip sys_error() call when out of memory. */
+    frame = alloc_mem (RxLen | 0x80000000);
+    /* if 'alloc_mem()' has failed, ignore this packet. */
+    if (frame != NULL) {
+      sp = (U32 *)(Rx_Desc[i].Addr & ~3);
+      dp = (U32 *)&frame->data[0];
+      for (RxLen = (RxLen + 3) >> 2; RxLen; RxLen--) {
+        *dp++ = *sp++;
+      }
+      put_in_queue (frame);
+    }
+    /* Release this frame from ETH IO buffer. */
+rel:Rx_Desc[i].Stat = DMA_RX_OWN;
+
+    if (++i == NUM_RX_BUF) i = 0;
+    RxBufIndex = i;  
+  }
+  while (!(Rx_Desc[i].Stat & DMA_RX_OWN));
+  RxBufIndex = i;
+
+  if (LPC_ETHERNET->DMA_STAT & INT_RBUIE) {
+    /* Receive buffer unavailable, resume DMA */
+    LPC_ETHERNET->DMA_STAT = INT_RBUIE;
+    LPC_ETHERNET->DMA_REC_POLL_DEMAND = 0;       
+  }
+  /* Clear pending interrupt bits */
+  LPC_ETHERNET->DMA_STAT = INT_NISE | INT_AISE | INT_RBUIE | INT_RIE;
+}
 
 /* phy write */
 static void write_PHY(rt_uint32_t PhyReg, rt_uint32_t Value)
 {
-    unsigned int tout;
+   rt_uint32_t tout;
 
-    LPC_EMAC->MADR = DP83848C_DEF_ADR | PhyReg;
-    LPC_EMAC->MWTD = Value;
+  /* Write a data 'Value' to PHY register 'PhyReg'. */
+  while (LPC_ETHERNET->MAC_MII_ADDR & MMAR_GB);
+  LPC_ETHERNET->MAC_MII_DATA  = Value;
+  LPC_ETHERNET->MAC_MII_ADDR  = MMAR_GB               |
+                                MMAR_MW               |
+                                CSR_CLK_RANGE    << 2 |
+                                PhyReg           << 6 |
+                                DP83848C_DEF_ADR << 11;
 
-    /* Wait utill operation completed */
-    tout = 0;
-    for (tout = 0; tout < MII_WR_TOUT; tout++)
-    {
-        if ((LPC_EMAC->MIND & MIND_BUSY) == 0)
-        {
-            break;
-        }
+  /* Wait until operation completed */
+  for (tout = 0; tout < MII_WR_TOUT; tout++) {
+    if ((LPC_ETHERNET->MAC_MII_ADDR & MMAR_GB) == 0) {
+      break;
     }
+  }
 }
 
 /* phy read */
@@ -128,134 +167,124 @@ static rt_uint16_t read_PHY(rt_uint8_t PhyReg)
 {
     rt_uint32_t tout;
 
-    LPC_EMAC->MADR = DP83848C_DEF_ADR | PhyReg;
-    LPC_EMAC->MCMD = MCMD_READ;
+/* Read a PHY register 'PhyReg'. */
+  while(LPC_ETHERNET->MAC_MII_ADDR & MMAR_GB);
+  LPC_ETHERNET->MAC_MII_ADDR =  MMAR_GB               |
+                                CSR_CLK_RANGE    << 2 |
+                                PhyReg           << 6 |
+                                DP83848C_DEF_ADR << 11;
 
-    /* Wait until operation completed */
-    tout = 0;
-    for (tout = 0; tout < MII_RD_TOUT; tout++)
-    {
-        if ((LPC_EMAC->MIND & MIND_BUSY) == 0)
-        {
-            break;
-        }
+  /* Wait until operation completed */
+  for (tout = 0; tout < MII_RD_TOUT; tout++) {
+    if ((LPC_ETHERNET->MAC_MII_ADDR & MMAR_GB) == 0) {
+      break;
     }
-    LPC_EMAC->MCMD = 0;
-    return (LPC_EMAC->MRDD);
+  }
+  return (LPC_ETHERNET->MAC_MII_DATA & MMDR_GD);
 }
 
 /* init rx descriptor */
 rt_inline void rx_descr_init(void)
 {
-    rt_uint32_t i;
+/* Initialize Receive DMA Descriptor array. */
+  rt_uint32_t i, next;
 
-    for (i = 0; i < NUM_RX_FRAG; i++)
-    {
-        RX_DESC_PACKET(i)  = RX_BUF(i);
-        RX_DESC_CTRL(i)    = RCTRL_INT | (ETH_FRAG_SIZE - 1);
-        RX_STAT_INFO(i)    = 0;
-        RX_STAT_HASHCRC(i) = 0;
-    }
-
-    /* Set EMAC Receive Descriptor Registers. */
-    LPC_EMAC->RxDescriptor    = RX_DESC_BASE;
-    LPC_EMAC->RxStatus        = RX_STAT_BASE;
-    LPC_EMAC->RxDescriptorNumber = NUM_RX_FRAG - 1;
-
-    /* Rx Descriptors Point to 0 */
-    LPC_EMAC->RxConsumeIndex  = 0;
+  RxBufIndex = 0;
+  for (i = 0, next = 0; i < NUM_RX_BUF; i++) {
+    if (++next == NUM_RX_BUF) next = 0;
+    Rx_Desc[i].Stat = DMA_RX_OWN;
+    Rx_Desc[i].Ctrl = DMA_RX_RCH | ETH_BUF_SIZE;
+    Rx_Desc[i].Addr = (rt_uint32_t)&rx_buf[i];
+    Rx_Desc[i].Next = (rt_uint32_t)&Rx_Desc[next];
+  }
+  LPC_ETHERNET->DMA_REC_DES_ADDR = (uint32_t)&Rx_Desc[0];
 }
 
 /* init tx descriptor */
 rt_inline void tx_descr_init(void)
 {
-    rt_uint32_t i;
+   /* Initialize Transmit DMA Descriptor array. */
+  rt_uint32_t i,next;
 
-    for (i = 0; i < NUM_TX_FRAG; i++)
-    {
-        TX_DESC_PACKET(i) = TX_BUF(i);
-        TX_DESC_CTRL(i)   = (1ul << 31) | (1ul << 30) | (1ul << 29) | (1ul << 28) | (1ul << 26) | (ETH_FRAG_SIZE - 1);
-        TX_STAT_INFO(i)   = 0;
-    }
-
-    /* Set EMAC Transmit Descriptor Registers. */
-    LPC_EMAC->TxDescriptor    = TX_DESC_BASE;
-    LPC_EMAC->TxStatus        = TX_STAT_BASE;
-    LPC_EMAC->TxDescriptorNumber = NUM_TX_FRAG - 1;
-
-    /* Tx Descriptors Point to 0 */
-    LPC_EMAC->TxProduceIndex  = 0;
+  TxBufIndex = 0;
+  for (i = 0, next = 0; i < NUM_TX_BUF; i++) {
+    if (++next == NUM_TX_BUF) next = 0;
+    Tx_Desc[i].CtrlStat = DMA_TX_TCH | DMA_TX_LS | DMA_TX_FS;
+    Tx_Desc[i].Addr     = (rt_uint32_t)&tx_buf[i];
+    Tx_Desc[i].Next     = (rt_uint32_t)&Tx_Desc[next];
+  }
+  LPC_ETHERNET->DMA_TRANS_DES_ADDR = (rt_uint32_t)&Tx_Desc[0];
 }
 
-/*
-TX_EN     P1_4
-TXD0      P1_0
-TXD1      P1_1
 
-RXD0      P1_9
-RXD1      P1_10
-RX_ER     P1_14
-CRS_DV    P1_8
-
-MDC       P1_16
-MDIO      P1_17
-
-REF_CLK   P1_15
-*/
 static rt_err_t lpc_emac_init(rt_device_t dev)
 {
-    /* Initialize the EMAC ethernet controller. */
-    rt_uint32_t regv, tout;
+  /* Initialize the EMAC ethernet controller. */
+  int tout, regv;
 
-    /* Power Up the EMAC controller. */
-    LPC_SC->PCONP |= (1UL << 30);
+  /* Enable GPIO register interface clock */
+  LPC_CCU1->CLK_M4_GPIO_CFG     |= 1;
+  while (!(LPC_CCU1->CLK_M4_GPIO_STAT   & 1));
 
-    /* Enable P1 Ethernet Pins. */
-    PINSEL_ConfigPin(1, 0, 1);  /**< P1_0  ENET_TXD0 */
-    PINSEL_ConfigPin(1, 1, 1);  /**< P1_1  ENET_TXD1 */
-    PINSEL_ConfigPin(1, 4, 1);  /**< P1_4  ENET_TX_EN */
-    PINSEL_ConfigPin(1, 8, 1);  /**< P1_8  ENET_CRS_DV */
-    PINSEL_ConfigPin(1, 9, 1);  /**< P1_9  ENET_RXD0 */
-    PINSEL_ConfigPin(1, 10, 1); /**< P1_10 ENET_RXD1 */
-    PINSEL_ConfigPin(1, 14, 1); /**< P1_14 ENET_RX_ER */
-    PINSEL_ConfigPin(1, 15, 1); /**< P1_15 ENET_REF_CLK */
-    PINSEL_ConfigPin(1, 16, 1); /**< P1_16 ENET_MDC */
-    PINSEL_ConfigPin(1, 17, 1); /**< P1_17 ENET_MDIO */
+  /* Enable ethernet branch clock */
+  LPC_CCU1->CLK_M4_ETHERNET_CFG |= 1;
+  while (!(LPC_CCU1->CLK_M4_ETHERNET_STAT & 1));
 
-    /* Reset all EMAC internal modules. */
-    LPC_EMAC->MAC1 = MAC1_RES_TX | MAC1_RES_MCS_TX | MAC1_RES_RX | MAC1_RES_MCS_RX |
-                     MAC1_SIM_RES | MAC1_SOFT_RES;
-    LPC_EMAC->Command = CR_REG_RES | CR_TX_RES | CR_RX_RES;
+  LPC_RGU->RESET_EXT_STAT19 |= (1 << 2);
+  LPC_RGU->RESET_EXT_STAT22 |= (1 << 2);
 
-    /* A short delay after reset. */
-    for (tout = 100; tout; tout--);
+  LPC_RGU->RESET_EXT_STAT19 &= ~(1 << 2);
+  LPC_RGU->RESET_EXT_STAT22 &= ~(1 << 2);
 
-    /* Initialize MAC control registers. */
-    LPC_EMAC->MAC1 = MAC1_PASS_ALL;
-    LPC_EMAC->MAC2 = MAC2_CRC_EN | MAC2_PAD_EN;
-    LPC_EMAC->MAXF = ETH_MAX_FLEN;
-    LPC_EMAC->CLRT = CLRT_DEF;
-    LPC_EMAC->IPGR = IPGR_DEF;
+  LPC_CREG->CREG6 = (LPC_CREG->CREG6 & ~0x7) | 4;
 
-    /* PCLK=18MHz, clock select=6, MDC=18/6=3MHz */
-    /* Enable Reduced MII interface. */
-    LPC_EMAC->MCFG = MCFG_CLK_DIV20 | MCFG_RES_MII;
-    for (tout = 100; tout; tout--);
-    LPC_EMAC->MCFG = MCFG_CLK_DIV20;
+  /* Ethernet pins configuration */
+  LPC_SCU->SFSP0_0  = (1 << 6) | (1 << 5) | 0x2; /* P0.0  = ENET_RXD1         */
+  LPC_SCU->SFSP0_1  = (1 << 6) | (1 << 5) | 0x6; /* P0.1  = ENET_TX_EN        */
 
-    /* Enable Reduced MII interface. */
-    LPC_EMAC->Command = CR_RMII | CR_PASS_RUNT_FRM | CR_PASS_RX_FILT;
+  LPC_SCU->SFSP1_15 = (1 << 6) | (1 << 5) | 0x3; /* P1.15 = ENET_RXD0         */
+  LPC_SCU->SFSP1_16 = (1 << 6) | (1 << 5) | 0x7; /* P1.16 = ENET_RX_DV        */
+  LPC_SCU->SFSP1_17 = (1 << 6) |            0x3; /* P1.17 = ENET_MDIO         */
+  LPC_SCU->SFSP1_18 = (1 << 6) | (1 << 5) | 0x3; /* P1.18 = ENET_TXD0         */
+  LPC_SCU->SFSP1_19 = (1 << 6) | (1 << 5) | 0x0; /* P1.19 = ENET_TX_CLK       */
+  LPC_SCU->SFSP1_20 = (1 << 6) | (1 << 5) | 0x3; /* P1.20 = ENET_TXD1         */
 
-    /* Reset Reduced MII Logic. */
-    LPC_EMAC->SUPP = SUPP_RES_RMII | SUPP_SPEED;
-    for (tout = 100; tout; tout--);
-    LPC_EMAC->SUPP = SUPP_SPEED;
+  LPC_SCU->SFSPC_1  = (1 << 6) | (1 << 5) | 0x3; /* PC.1  = ENET_MDC          */
 
-    /* Put the PHY in reset mode */
-    write_PHY(PHY_REG_BMCR, 0x8000);
-    for (tout = 1000; tout; tout--);
+#ifdef _MII_
+  LPC_CREG->CREG6 &= ~0x7;
+  
+  LPC_SCU->SFSP0_1 = (1 << 6) | (1 << 5) | 0x2;  /* P0.1  = ENET_COL          */
+  
+  LPC_SCU->SFSPC_0 = (1 << 6) | (1 << 5) | 0x0;  /* PC.0  = ENET_RX_CLK       */
+  LPC_SCU->SFSPC_2 = (1 << 6) | (1 << 5) | 0x3;  /* PC.2  = ENET_TXD2         */
+  LPC_SCU->SFSPC_3 = (1 << 6) | (1 << 5) | 0x3;  /* PC.3  = ENET_TXD3         */
+  LPC_SCU->SFSPC_5 = (1 << 6) | (1 << 5) | 0x3;  /* PC.5  = ENET_TX_ER        */
+  LPC_SCU->SFSPC_6 = (1 << 6) | (1 << 5) | 0x3;  /* PC.6  = ENET_RXD2         */
+  LPC_SCU->SFSPC_7 = (1 << 6) | (1 << 5) | 0x3;  /* PC.7  = ENET_RXD3         */
+  LPC_SCU->SFSPC_8 = (1 << 6) | (1 << 5) | 0x3;  /* PC.8  = ENET_RX_DV        */
+#endif
 
-    /* Configure the PHY device */
+  /* Reset Ethernet Controller peripheral */
+  LPC_RGU->RESET_CTRL0 = ETHERNET_RST;
+  while (!(LPC_RGU->RESET_ACTIVE_STATUS0 & ETHERNET_RST));
+
+  /* Reset MAC Subsystem internal registers */
+  LPC_ETHERNET->DMA_BUS_MODE |= DBMR_SWR;
+  while (LPC_ETHERNET->DMA_BUS_MODE & DBMR_SWR);
+
+  /* Put the DP83848C in reset mode */
+  write_PHY (PHY_REG_BMCR, PHY_BMCR_RESET);
+
+  /* Wait for hardware reset to end. */
+  for (tout = 0; tout < TIMEOUT; tout++) {
+    regv = read_PHY (PHY_REG_BMCR);
+    if (!(regv & PHY_BMCR_RESET)) {
+      /* Reset complete */
+      break;
+    }
+  }
+
     /* Configure the PHY device */
     switch (lpc_emac_device.phy_mode)
     {
@@ -272,59 +301,62 @@ static rt_err_t lpc_emac_init(rt_device_t dev)
         write_PHY(PHY_REG_BMCR, PHY_FULLD_100M);
         break;
     }
-    if (tout >= 0x100000) return -RT_ERROR; // auto_neg failed
 
-    regv = 0x0004;
-    /* Configure Full/Half Duplex mode. */
-    if (regv & 0x0004)
-    {
-        /* Full duplex is enabled. */
-        LPC_EMAC->MAC2    |= MAC2_FULL_DUP;
-        LPC_EMAC->Command |= CR_FULL_DUP;
-        LPC_EMAC->IPGT     = IPGT_FULL_DUP;
+  /* Check the link status. */
+  for (tout = 0; tout < TIMEOUT; tout++) {
+    regv = read_PHY (PHY_REG_STS);
+    if (regv & LINK_VALID_STS) {
+      /* Link is on. */
+      break;
     }
-    else
-    {
-        /* Half duplex mode. */
-        LPC_EMAC->IPGT = IPGT_HALF_DUP;
-    }
+  }
 
-    /* Configure 100MBit/10MBit mode. */
-    if (regv & 0x0002)
-    {
-        /* 10MBit mode. */
-        LPC_EMAC->SUPP = 0;
-    }
-    else
-    {
-        /* 100MBit mode. */
-        LPC_EMAC->SUPP = SUPP_SPEED;
-    }
+  /* Initialize MAC control register */
+  LPC_ETHERNET->MAC_CONFIG = MCR_DO;
+
+  /* Configure Full/Half Duplex mode. */
+  if (regv & FULL_DUP_STS) {
+    /* Full duplex is enabled. */
+    LPC_ETHERNET->MAC_CONFIG |= MCR_DM;
+  }
+
+  /* Configure 100MBit/10MBit mode. */
+  if (~(regv & SPEED_10M_STS)) {
+    /* 100MBit mode. */
+    LPC_ETHERNET->MAC_CONFIG |= MCR_FES;  
+  }
 
     /* Set the Ethernet MAC Address registers */
-    LPC_EMAC->SA0 = (lpc_emac_device.dev_addr[1] << 8) | lpc_emac_device.dev_addr[0];
-    LPC_EMAC->SA1 = (lpc_emac_device.dev_addr[3] << 8) | lpc_emac_device.dev_addr[2];
-    LPC_EMAC->SA2 = (lpc_emac_device.dev_addr[5] << 8) | lpc_emac_device.dev_addr[4];
+  LPC_ETHERNET->MAC_ADDR0_HIGH = ((rt_uint32_t)lpc_emac_device.dev_addr[5] << 8)  
+		                             | ((rt_uint32_t)lpc_emac_device.dev_addr[4]);
+		
+  LPC_ETHERNET->MAC_ADDR0_LOW  = ((rt_uint32_t)lpc_emac_device.dev_addr[3] << 24) 
+		                              |((rt_uint32_t)lpc_emac_device.dev_addr[2] << 16) 
+		                              |((rt_uint32_t)lpc_emac_device.dev_addr[1] <<  8) 
+		                              |((rt_uint32_t)lpc_emac_device.dev_addr[3]);
+		
+  /* Reset all interrupts */
+  LPC_ETHERNET->DMA_STAT = 0x0001FFFF;
 
-    /* Initialize Tx and Rx DMA Descriptors */
-    rx_descr_init();
-    tx_descr_init();
+  /* Enable Rx interrupts */
+  LPC_ETHERNET->DMA_INT_EN =  INT_NISE | INT_AISE | INT_RBUIE | INT_RIE;
 
-    /* Receive Broadcast and Perfect Match Packets */
-    LPC_EMAC->RxFilterCtrl = RFC_BCAST_EN | RFC_PERFECT_EN;
+  /* Initialize Descriptor Lists    */
+  rx_descr_init();
+  tx_descr_init();
 
-    /* Reset all interrupts */
-    LPC_EMAC->IntClear  = 0xFFFF;
+  /* Configure Frame Filtering */
+  LPC_ETHERNET->MAC_FRAME_FILTER = MFFR_PM | MFFR_PAM | MFFR_RA;
+  LPC_ETHERNET->MAC_FLOW_CTRL    = MFCR_DZQP;
 
-    /* Enable EMAC interrupts. */
-    LPC_EMAC->IntEnable = INT_RX_DONE | INT_TX_DONE;
+  /* Start Transmission & Receive processes */
+  LPC_ETHERNET->DMA_OP_MODE = DOMR_FTF | DOMR_ST | DOMR_SR;
+  
+  /* Enable Receiver and Transmitter */  
+  LPC_ETHERNET->MAC_CONFIG |= MCR_TE | MCR_RE;
 
-    /* Enable receive and transmit mode of MAC Ethernet core */
-    LPC_EMAC->Command  |= (CR_RX_EN | CR_TX_EN);
-    LPC_EMAC->MAC1     |= MAC1_REC_EN;
-
-    /* Enable the ENET Interrupt */
-    NVIC_EnableIRQ(ENET_IRQn);
+  /* Ethernet Interrupt Disable function. */
+  NVIC_DisableIRQ (ETHERNET_IRQn);
 
     return RT_EOK;
 }
@@ -375,14 +407,11 @@ rt_err_t lpc_emac_tx(rt_device_t dev, struct pbuf *p)
     rt_uint32_t Index, IndexNext;
     rt_uint8_t *ptr;
 
-    /* calculate next index */
-    IndexNext = LPC_EMAC->TxProduceIndex + 1;
-    if (IndexNext > LPC_EMAC->TxDescriptorNumber) IndexNext = 0;
-
-    /* check whether block is full */
-    while (IndexNext == LPC_EMAC->TxConsumeIndex)
-    {
-        rt_err_t result;
+  Index = TxBufIndex;
+  /* Wait until previous packet transmitted. */
+  while (Tx_Desc[Index].CtrlStat & DMA_TX_OWN)
+{
+    rt_err_t result;
         rt_uint32_t recved;
 
         /* there is no block yet, wait a flag */
@@ -390,31 +419,23 @@ rt_err_t lpc_emac_tx(rt_device_t dev, struct pbuf *p)
                                RT_EVENT_FLAG_AND | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &recved);
 
         RT_ASSERT(result == RT_EOK);
-    }
-
+}
     /* lock EMAC device */
     rt_sem_take(&sem_lock, RT_WAITING_FOREVER);
 
-    /* get produce index */
-    Index = LPC_EMAC->TxProduceIndex;
-
-    /* calculate next index */
-    IndexNext = LPC_EMAC->TxProduceIndex + 1;
-    if (IndexNext > LPC_EMAC->TxDescriptorNumber)
-        IndexNext = 0;
-
-    /* copy data to tx buffer */
-    ptr = (rt_uint8_t *)TX_BUF(Index);
+   /* copy data to tx buffer */
+    ptr = (rt_uint8_t *)(Tx_Desc[Index].Addr & ~3);
     pbuf_copy_partial(p, ptr, p->tot_len, 0);
 
-    TX_DESC_CTRL(Index) &= ~0x7ff;
-    TX_DESC_CTRL(Index) |= (p->tot_len - 1) & 0x7ff;
-
-    /* change index to the next */
-    LPC_EMAC->TxProduceIndex = IndexNext;
-
-    /* unlock EMAC device */
-    rt_sem_release(&sem_lock);
+  Tx_Desc[Index].Size      = p->tot_len;
+  Tx_Desc[Index].CtrlStat |= DMA_TX_OWN;
+  if (++Index == NUM_TX_BUF) Index = 0;
+  TxBufIndex = Index;
+  /* Start frame transmission. */
+  LPC_ETHERNET->DMA_STAT = DSR_TPSS;
+  LPC_ETHERNET->DMA_TRANS_POLL_DEMAND = 0;
+ /* unlock EMAC device */
+  rt_sem_release(&sem_lock);
 
     return RT_EOK;
 }
@@ -466,6 +487,8 @@ struct pbuf *lpc_emac_rx(rt_device_t dev)
 
 int lpc_emac_hw_init(void)
 {
+    uint32_t result[4];
+
     rt_event_init(&tx_event, "tx_event", RT_IPC_FLAG_FIFO);
     rt_sem_init(&sem_lock, "eth_lock", 1, RT_IPC_FLAG_FIFO);
 
@@ -477,9 +500,10 @@ int lpc_emac_hw_init(void)
     lpc_emac_device.dev_addr[1] = 0x60;
     lpc_emac_device.dev_addr[2] = 0x37;
     /* set mac address: (only for test) */
-    lpc_emac_device.dev_addr[3] = 0x12;
-    lpc_emac_device.dev_addr[4] = 0x34;
-    lpc_emac_device.dev_addr[5] = 0x56;
+    ReadDeviceSerialNum(result);
+    lpc_emac_device.dev_addr[3] = result[0] ^ result[1];
+    lpc_emac_device.dev_addr[4] = result[1] ^ result[2];
+    lpc_emac_device.dev_addr[5] = result[2] ^ result[3];
 
     lpc_emac_device.parent.parent.init      = lpc_emac_init;
     lpc_emac_device.parent.parent.open      = lpc_emac_open;
@@ -493,7 +517,7 @@ int lpc_emac_hw_init(void)
     lpc_emac_device.parent.eth_tx           = lpc_emac_tx;
 
     eth_device_init(&(lpc_emac_device.parent), "e0");
-		return 0;
+    return 0;
 }
 INIT_DEVICE_EXPORT(lpc_emac_hw_init);
 
