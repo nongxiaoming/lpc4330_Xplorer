@@ -25,26 +25,28 @@
 #define CSR_CLK_RANGE       0x0003      /* CSR Clock range 100-150MHz         */
 
 /* DMA Descriptors. */
-typedef struct {
-  uint32_t volatile Stat;
-  uint32_t Ctrl;
-  uint32_t Addr;
-  uint32_t Next;
-  uint32_t Ext;
-  uint32_t Rsvd;
-  uint32_t RTSL;
-  uint32_t RTSH;
+typedef struct
+{
+    uint32_t volatile Stat;
+    uint32_t Ctrl;
+    uint32_t Addr;
+    uint32_t Next;
+    uint32_t Ext;
+    uint32_t Rsvd;
+    uint32_t RTSL;
+    uint32_t RTSH;
 } RX_Desc;
 
-typedef struct {
-  uint32_t volatile CtrlStat;
-  uint32_t Size;
-  uint32_t Addr;
-  uint32_t Next;
-  uint32_t Rsvd1;
-  uint32_t Rsvd2;
-  uint32_t RTSL;
-  uint32_t RTSH;
+typedef struct
+{
+    uint32_t volatile CtrlStat;
+    uint32_t Size;
+    uint32_t Addr;
+    uint32_t Next;
+    uint32_t Rsvd1;
+    uint32_t Rsvd2;
+    uint32_t RTSL;
+    uint32_t RTSH;
 } TX_Desc;
 
 /* DMA Descriptor RX Packet Status */
@@ -273,7 +275,7 @@ typedef struct {
 #define FULL_DUP_STS        0x0004      /* Full Duplex Status (REG_STS reg)   */
 #define SPEED_10M_STS       0x0002      /* 10Mbps Status (REG_STS reg)        */
 
-#define DP83848C_DEF_ADR    0x0F00      /* Default PHY device address        */
+#define DP83848C_DEF_ADR    0x01      /* Default PHY device address        */
 #define DP83848C_ID         0x20005C90  /* PHY Identifier                    */
 
 int lpc_emac_hw_init(void);
