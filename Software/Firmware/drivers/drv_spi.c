@@ -133,7 +133,7 @@ static rt_uint32_t xfer(struct rt_spi_device *device, struct rt_spi_message *mes
     /* take CS */
     if (message->cs_take)
     {
-         LPC_GPIO_PORT->CLR[spi_cs->port] |= spi_cs->pin;
+        LPC_GPIO_PORT->CLR[spi_cs->port] |= spi_cs->pin;
     }
 
     {
@@ -222,15 +222,15 @@ rt_err_t lpc_spi_register(LPC_SSPn_Type *SPI,
     {
         lpc_spi->SPI = LPC_SSP0;
         /*enable SSP0 power/clock*/
-  LPC_CCU1-> CLK_M4_SSP0_CFG |= 0x01;
-  while (!(LPC_CCU1-> CLK_M4_SSP0_STAT & 0x01));
+        LPC_CCU1-> CLK_M4_SSP0_CFG |= 0x01;
+        while (!(LPC_CCU1-> CLK_M4_SSP0_STAT & 0x01));
     }
     else if (SPI == LPC_SSP1)
     {
         lpc_spi->SPI = LPC_SSP1;
         /*enable SSP1 power/clock*/
         LPC_CCU1-> CLK_M4_SSP1_CFG |= 0x01;
-  while (!(LPC_CCU1-> CLK_M4_SSP1_STAT & 0x01));
+        while (!(LPC_CCU1-> CLK_M4_SSP1_STAT & 0x01));
     }
     else
     {
@@ -263,11 +263,11 @@ int rt_hw_spi_init(void)
         static struct rt_spi_device spi_device;
         static struct lpc_spi_cs  spi_cs1;
         /* spi10: P4.21 */
-   //     LPC_IOCON->P4_21 &= ~0x07;
+        //     LPC_IOCON->P4_21 &= ~0x07;
         spi_cs1.port = 5;
         spi_cs1.pin = 21;
-       LPC_GPIO_PORT->DIR[spi_cs1.port] |= spi_cs1.pin;
-     LPC_GPIO_PORT->SET[spi_cs1.port] |= spi_cs1.pin;
+        LPC_GPIO_PORT->DIR[spi_cs1.port] |= spi_cs1.pin;
+        LPC_GPIO_PORT->SET[spi_cs1.port] |= spi_cs1.pin;
         rt_spi_bus_attach_device(&spi_device, "spi10", "spi1", (void *)&spi_cs1);
     }
 

@@ -50,20 +50,20 @@ void rt_hw_board_init()
     /* Set the Vector Table base location at 0x00000000 */
     SCB->VTOR  = (0x00000000 & NVIC_VTOR_MASK);
 #endif
-	
-	  /* update the core clock */
-	  SystemCoreClockUpdate();
-	
+
+    /* update the core clock */
+    SystemCoreClockUpdate();
+
     /* init systick */
     SysTick_Config(SystemCoreClock / RT_TICK_PER_SECOND - 1);
-	
+
     /* set pend exception priority */
     NVIC_SetPriority(PendSV_IRQn, (1 << __NVIC_PRIO_BITS) - 1);
 
     /* init uart device */
     rt_hw_uart_init();
-	
-	  /* setup the console device */
+
+    /* setup the console device */
     rt_console_set_device(RT_CONSOLE_DEVICE_NAME);
 
 #if LPC_EXT_SDRAM == 1

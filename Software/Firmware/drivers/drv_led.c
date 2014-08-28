@@ -4,7 +4,7 @@
 
 
 /**
-* 
+*
 * LED1 <==> GPIO1[11]
 * LED2 <==> GPIO1[12]
 *
@@ -13,10 +13,10 @@
 #define LED_NUM    2
 
 #define LED1_PIN   11
-#define LED1_PORT  1 
+#define LED1_PORT  1
 
 #define LED2_PIN   12
-#define LED2_PORT  1 
+#define LED2_PORT  1
 
 struct led_ctrl
 {
@@ -36,26 +36,26 @@ static struct lpc_led led;
 
 static rt_err_t rt_led_init(rt_device_t dev)
 {
-     /* Enable clock and init GPIO outputs */
-  LPC_CCU1->CLK_M4_GPIO_CFG  = CCU_CLK_CFG_AUTO | CCU_CLK_CFG_RUN;
-  while (!(LPC_CCU1->CLK_M4_GPIO_STAT & CCU_CLK_STAT_RUN));
-	
+    /* Enable clock and init GPIO outputs */
+    LPC_CCU1->CLK_M4_GPIO_CFG  = CCU_CLK_CFG_AUTO | CCU_CLK_CFG_RUN;
+    while (!(LPC_CCU1->CLK_M4_GPIO_STAT & CCU_CLK_STAT_RUN));
+
     /* set GPIO1[11] GPIO1[12] as GPIO. */
     LPC_SCU->SFSP2_11  =  0;                              /* GPIO1[11]          */
     LPC_SCU->SFSP2_12  =  0;                              /* GPIO1[12]          */
     /* set GPIO1[11]  GPIO1[12]  output. */
-    LPC_GPIO_PORT->DIR[LED1_PORT] |= 0x01<<LED1_PIN;
-	  LPC_GPIO_PORT->DIR[LED2_PORT] |= 0x01<<LED2_PIN;
+    LPC_GPIO_PORT->DIR[LED1_PORT] |= 0x01 << LED1_PIN;
+    LPC_GPIO_PORT->DIR[LED2_PORT] |= 0x01 << LED2_PIN;
     /* turn off all the led */
-    LPC_GPIO_PORT->SET[LED1_PORT] |= 0x01<<LED1_PIN;
-	  LPC_GPIO_PORT->SET[LED2_PORT] |= 0x01<<LED2_PIN;
-	
+    LPC_GPIO_PORT->SET[LED1_PORT] |= 0x01 << LED1_PIN;
+    LPC_GPIO_PORT->SET[LED2_PORT] |= 0x01 << LED2_PIN;
+
 
     led.ctrl[0].num = LED1_PIN;
-    led.ctrl[0].port =LED1_PORT;
+    led.ctrl[0].port = LED1_PORT;
     led.ctrl[1].num = LED2_PIN;
-    led.ctrl[1].port =LED2_PORT;
-	
+    led.ctrl[1].port = LED2_PORT;
+
     return RT_EOK;
 }
 
@@ -81,7 +81,7 @@ static rt_size_t rt_led_read(rt_device_t dev, rt_off_t pos, void *buffer,
 
     for (index = 0; index < nr; index++)
     {
-        if (( LPC_GPIO_PORT->PIN[led.ctrl[pos + index].port] & (1 << led.ctrl[pos + index].num)) != 0)
+        if ((LPC_GPIO_PORT->PIN[led.ctrl[pos + index].port] & (1 << led.ctrl[pos + index].num)) != 0)
         {
             *value = 0;
         }
