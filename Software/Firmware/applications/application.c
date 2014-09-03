@@ -18,9 +18,35 @@
 #include <rtdevice.h> 
 #include "drv_led.h"
 
+#ifdef RT_USING_LWIP
+#include "drv_emac.h"
+#include "ethernetif.h"
+#endif
+#ifdef RT_USING_FINSH
+#include "shell.h"
+#endif
+
 /* thread phase init */
 void rt_init_thread_entry(void *parameter)
 {
+	    /* LwIP Initialization */
+#ifdef RT_USING_LWIP
+    {
+        extern void lwip_sys_init(void);
+        
+        eth_system_device_init();
+
+        /* register ethernetif device */
+        lpc_emac_hw_init();
+        /* init all device */
+        rt_device_init_all();
+
+        /* init lwip system */
+        lwip_sys_init();
+        rt_kprintf("TCP/IP initialized!\n");
+    }
+#endif     
+netio_init();		
 #ifdef RT_USING_FINSH
 	/* initialize finsh */
 	finsh_system_init();
@@ -65,17 +91,17 @@ int rt_application_init(void)
                            2048, RT_THREAD_PRIORITY_MAX / 3, 20);
     if (tid != RT_NULL) rt_thread_startup(tid);
         /* init led thread */
-    result = rt_thread_init(&led_thread,
-                            "led",
-                            led_thread_entry,
-                            RT_NULL,
-                            (rt_uint8_t*)&led_stack[0],
-                            sizeof(led_stack),
-                            20,
-                            5);
-    if (result == RT_EOK)
-    {
-        rt_thread_startup(&led_thread);
-    }
+//    result = rt_thread_init(&led_thread,
+//                            "led",
+//                            led_thread_entry,
+//                            RT_NULL,
+//                            (rt_uint8_t*)&led_stack[0],
+//                            sizeof(led_stack),
+//                            20,
+//                            5);
+//    if (result == RT_EOK)
+//    {
+//        rt_thread_startup(&led_thread);
+//    }
     return 0;
 }
