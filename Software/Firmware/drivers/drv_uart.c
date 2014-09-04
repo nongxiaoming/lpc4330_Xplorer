@@ -221,7 +221,7 @@ void rt_hw_uart_init(void)
     LPC_CCU1->CLK_M4_GPIO_CFG     |= 0x01;
     while (!(LPC_CCU1->CLK_M4_GPIO_STAT  & 0x01));
 
-    /* Enable USART1 peripheral clock                                           */
+    /* Enable USART0 peripheral clock                                           */
     LPC_CCU2->CLK_APB0_USART0_CFG |= 0x01;
     while (!(LPC_CCU2->CLK_APB0_USART0_STAT & 0x01));
 
