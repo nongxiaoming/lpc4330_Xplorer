@@ -19,7 +19,7 @@
 
 /* ETH Memory Buffer configuration. */
 #define NUM_RX_BUF          4           /* 0x1800 for Rx (4*1536=6K)          */
-#define NUM_TX_BUF          4           /* 0x0600 for Tx (2*1536=3K)          */
+#define NUM_TX_BUF          4           /* 0x0600 for Tx (2*1536=6K)          */
 #define ETH_BUF_SIZE        1536        /* ETH Receive/Transmit buffer size   */
 
 #define CSR_CLK_RANGE       0x0003      /* CSR Clock range 100-150MHz         */
