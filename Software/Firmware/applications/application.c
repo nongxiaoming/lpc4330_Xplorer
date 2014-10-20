@@ -91,17 +91,17 @@ int rt_application_init(void)
                            2048, RT_THREAD_PRIORITY_MAX / 3, 20);
     if (tid != RT_NULL) rt_thread_startup(tid);
         /* init led thread */
-//    result = rt_thread_init(&led_thread,
-//                            "led",
-//                            led_thread_entry,
-//                            RT_NULL,
-//                            (rt_uint8_t*)&led_stack[0],
-//                            sizeof(led_stack),
-//                            20,
-//                            5);
-//    if (result == RT_EOK)
-//    {
-//        rt_thread_startup(&led_thread);
-//    }
+    result = rt_thread_init(&led_thread,
+                            "led",
+                            led_thread_entry,
+                            RT_NULL,
+                            (rt_uint8_t*)&led_stack[0],
+                            sizeof(led_stack),
+                            20,
+                            5);
+    if (result == RT_EOK)
+    {
+        rt_thread_startup(&led_thread);
+    }
     return 0;
 }
