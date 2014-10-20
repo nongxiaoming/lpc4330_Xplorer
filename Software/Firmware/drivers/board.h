@@ -28,9 +28,9 @@
 // <RDTConfigurator URL="http://www.rt-thread.com/eclipse">
 
 // <integer name="LPC_EXT_SDRAM" description="Begin Address of External SDRAM" default="0xA0000000" />
-#define LPC_EXT_SDRAM_BEGIN    0xA0000000
+#define LPC_EXT_SDRAM_BEGIN    0x28000000
 // <integer name="LPC_EXT_SDRAM_END" description="End Address of External SDRAM" default="0xA2000000" />
-#define LPC_EXT_SDRAM_END      0xA2000000
+#define LPC_EXT_SDRAM_END      0x2A000000
 
 // <bool name="RT_USING_UART0" description="Using UART0" default="true" />
 #define RT_USING_UART0
