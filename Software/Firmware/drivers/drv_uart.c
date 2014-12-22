@@ -9,7 +9,7 @@
  *
  * Change Logs:
  * Date           Author       Notes
- * 2013-05-18     Bernard      The first version for LPC40xx
+ * 2013-05-18     xiaonong     The first version for LPC43xx
  */
 
 #include <rthw.h>
@@ -126,7 +126,7 @@ void UART0_IRQHandler(void)
         /* Receive an error data */
         if (intsrc & UART_LSR_PE)
         {
-            temp = LPC_USART0->RBR;
+            temp = uart->USART->RBR;
         }
         break;
 
@@ -178,7 +178,7 @@ void UART2_IRQHandler(void)
         /* Receive an error data */
         if (intsrc & UART_LSR_PE)
         {
-            temp = LPC_USART0->RBR;
+            temp = uart->USART->RBR;
         }
         break;
 
