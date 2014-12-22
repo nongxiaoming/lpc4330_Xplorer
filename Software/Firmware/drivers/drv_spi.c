@@ -141,7 +141,6 @@ static rt_uint32_t xfer(struct rt_spi_device *device, struct rt_spi_message *mes
         {
             const rt_uint8_t *send_ptr = message->send_buf;
             rt_uint8_t *recv_ptr = message->recv_buf;
-            //  rt_kprintf("size =%d",size);
             while (size--)
             {
                 rt_uint8_t data = 0x00;
