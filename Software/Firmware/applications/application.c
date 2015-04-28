@@ -46,7 +46,7 @@ void rt_init_thread_entry(void *parameter)
         rt_kprintf("TCP/IP initialized!\n");
     }
 #endif     
-netio_init();		
+
 #ifdef RT_USING_FINSH
 	/* initialize finsh */
 	finsh_system_init();
