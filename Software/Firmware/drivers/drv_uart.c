@@ -9,7 +9,7 @@
  *
  * Change Logs:
  * Date           Author       Notes
- * 2013-05-18     xiaonong     The first version for LPC43xx
+ * 2014-05-18     xiaonong     The first version for LPC43xx
  */
 
 #include <rthw.h>
@@ -225,7 +225,7 @@ void rt_hw_uart_init(void)
     LPC_CCU2->CLK_APB0_USART0_CFG |= 0x01;
     while (!(LPC_CCU2->CLK_APB0_USART0_STAT & 0x01));
 
-    /* Enable USART1 register interface clock                                   */
+    /* Enable USART0 register interface clock                                   */
     LPC_CCU1->CLK_M4_USART0_CFG   |= 0x01;
     while (!(LPC_CCU1->CLK_M4_USART0_STAT & 0x01));
 

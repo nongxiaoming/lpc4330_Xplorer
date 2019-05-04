@@ -1,7 +1,7 @@
 /*
- * File      : drv_uart.c
+ * File      : drv_spi.c
  * This file is part of RT-Thread RTOS
- * COPYRIGHT (C) 2009-2013 RT-Thread Develop Team
+ * COPYRIGHT (C) 2009-2014 RT-Thread Develop Team
  *
  * The license and distribution terms for this file may be
  * found in the file LICENSE in this distribution or at
@@ -9,7 +9,7 @@
  *
  * Change Logs:
  * Date           Author       Notes
- * 2013-06-10     xiaonong      The first version for LPC40xx
+ * 2014-06-10     xiaonong      The first version for LPC43xx
  */
 
 #include <rthw.h>
